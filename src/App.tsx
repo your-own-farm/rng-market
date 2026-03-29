@@ -2,6 +2,112 @@ import React from "react";
 import { usePrices } from "./usePrices";
 import { CropPriceVM, Trend, SellAdvice } from "./types";
 
+// ── Custom Dropdown ───────────────────────────────────────────────────────────
+interface DropdownOption { value: string; label: string; dot?: string }
+interface DropdownProps {
+  value: string;
+  options: DropdownOption[];
+  onChange: (v: string) => void;
+  icon?: string;
+}
+
+const Dropdown: React.FC<DropdownProps> = ({ value, options, onChange, icon }) => {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const selected = options.find(o => o.value === value) ?? options[0];
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: "relative", userSelect: "none" }}>
+      {/* Trigger */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "0.55rem 0.9rem",
+          background: open ? "rgba(99,102,241,0.12)" : "rgba(255,255,255,0.05)",
+          border: `1px solid ${open ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}`,
+          borderRadius: 10, color: "#f1f5f9", fontSize: 14, fontWeight: 500,
+          cursor: "pointer", whiteSpace: "nowrap", outline: "none",
+          transition: "background 0.15s, border-color 0.15s",
+          boxShadow: open ? "0 0 0 2px rgba(99,102,241,0.15)" : "none",
+          fontFamily: "inherit",
+        }}
+      >
+        {icon && <span style={{ fontSize: 13 }}>{icon}</span>}
+        {selected.dot && <span>{selected.dot}</span>}
+        <span style={{ color: value === options[0].value ? "#64748b" : "#e2e8f0" }}>
+          {selected.label}
+        </span>
+        <svg
+          width="12" height="12" viewBox="0 0 12 12" fill="none"
+          style={{ marginLeft: 2, transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0 }}
+        >
+          <path d="M2 4l4 4 4-4" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+
+      {/* Menu */}
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0,
+          minWidth: "100%", zIndex: 200,
+          background: "#111827",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 12,
+          boxShadow: "0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.1)",
+          overflow: "hidden",
+          animation: "dd-in 0.12s ease",
+        }}>
+          <style>{`
+            @keyframes dd-in {
+              from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+              to   { opacity: 1; transform: translateY(0)  scale(1); }
+            }
+          `}</style>
+          {options.map((opt, i) => {
+            const active = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  width: "100%", padding: "0.6rem 1rem",
+                  background: active ? "rgba(99,102,241,0.15)" : "transparent",
+                  border: "none", borderBottom: i < options.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                  color: active ? "#a78bfa" : "#cbd5e1",
+                  fontSize: 13, fontWeight: active ? 600 : 400,
+                  cursor: "pointer", textAlign: "left", whiteSpace: "nowrap",
+                  fontFamily: "inherit",
+                  transition: "background 0.1s, color 0.1s",
+                }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.05)"; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+              >
+                {opt.dot && <span style={{ fontSize: 11 }}>{opt.dot}</span>}
+                <span style={{ flex: 1 }}>{opt.label}</span>
+                {active && (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M2.5 7l3 3 6-6" stroke="#a78bfa" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const BG      = "#0b1120";
 const CARD    = "rgba(255,255,255,0.04)";
@@ -182,38 +288,38 @@ const MarketApp: React.FC = () => {
   const inputSt: React.CSSProperties = {
     background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`,
     borderRadius: 10, color: "#f1f5f9", padding: "0.55rem 1rem",
-    fontSize: 14, outline: "none", colorScheme: "dark",
+    fontSize: 14, outline: "none", colorScheme: "dark", fontFamily: "inherit",
+    transition: "border-color 0.15s, box-shadow 0.15s",
   };
+
+  const stateOptions: DropdownOption[] = states.map(s => ({
+    value: s, label: s === "all" ? "All States" : s,
+  }));
+
+  const adviceOptions: DropdownOption[] = [
+    { value: "all",      label: "All Signals" },
+    { value: "sell-now", label: "Sell Now",  dot: "🟢" },
+    { value: "watch",    label: "Watch",     dot: "🟡" },
+    { value: "hold",     label: "Hold",      dot: "🔴" },
+  ];
+
+  const sortOptions: DropdownOption[] = [
+    { value: "change",  label: "Biggest Move" },
+    { value: "price",   label: "Highest Price" },
+    { value: "updated", label: "Most Recent" },
+  ];
 
   return (
     <div style={{ background: BG, minHeight: "100vh", fontFamily: "'Inter', system-ui, sans-serif", color: "#f1f5f9" }}>
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         * { box-sizing: border-box; }
-        select {
-          appearance: none;
-          -webkit-appearance: none;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-          background-repeat: no-repeat;
-          background-position: right 12px center;
-          padding-right: 36px !important;
-          cursor: pointer;
-        }
-        select option {
-          background: #1e293b;
-          color: #f1f5f9;
-        }
-        select:focus {
-          border-color: #6366f1 !important;
-          box-shadow: 0 0 0 2px rgba(99,102,241,0.2);
-        }
+        input[type="search"] { outline: none; }
         input[type="search"]:focus {
           border-color: #6366f1 !important;
           box-shadow: 0 0 0 2px rgba(99,102,241,0.2);
         }
+        input[type="search"]::-webkit-search-cancel-button { filter: invert(0.5); }
       `}</style>
 
       {/* ── Header ─── */}
@@ -262,20 +368,9 @@ const MarketApp: React.FC = () => {
             onChange={e => setSearch(e.target.value)}
             style={{ ...inputSt, flex: "1 1 220px", minWidth: 180 }}
           />
-          <select value={stateFilter} onChange={e => setStateFilter(e.target.value)} style={inputSt}>
-            {states.map(s => <option key={s} value={s}>{s === "all" ? "All States" : s}</option>)}
-          </select>
-          <select value={adviceFilter} onChange={e => setAdviceFilter(e.target.value as any)} style={inputSt}>
-            <option value="all">All Signals</option>
-            <option value="sell-now">🟢 Sell Now</option>
-            <option value="watch">🟡 Watch</option>
-            <option value="hold">🔴 Hold</option>
-          </select>
-          <select value={sort} onChange={e => setSort(e.target.value as any)} style={inputSt}>
-            <option value="change">Sort: Biggest Move</option>
-            <option value="price">Sort: Highest Price</option>
-            <option value="updated">Sort: Most Recent</option>
-          </select>
+          <Dropdown value={stateFilter} options={stateOptions} onChange={setStateFilter} icon="📍" />
+          <Dropdown value={adviceFilter} options={adviceOptions} onChange={v => setAdviceFilter(v as any)} icon="📊" />
+          <Dropdown value={sort} options={sortOptions} onChange={v => setSort(v as any)} icon="↕" />
         </div>
 
         {/* Grid */}
