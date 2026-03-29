@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "your-roots-6874d"
+  },
+  "targets": {
+    "your-roots-6874d": {
+      "hosting": {
+        "market": ["your-roots-market"]
+      }
+    }
+  }
+}
