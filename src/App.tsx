@@ -193,6 +193,27 @@ const MarketApp: React.FC = () => {
           50% { opacity: 0.4; }
         }
         * { box-sizing: border-box; }
+        select {
+          appearance: none;
+          -webkit-appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          padding-right: 36px !important;
+          cursor: pointer;
+        }
+        select option {
+          background: #1e293b;
+          color: #f1f5f9;
+        }
+        select:focus {
+          border-color: #6366f1 !important;
+          box-shadow: 0 0 0 2px rgba(99,102,241,0.2);
+        }
+        input[type="search"]:focus {
+          border-color: #6366f1 !important;
+          box-shadow: 0 0 0 2px rgba(99,102,241,0.2);
+        }
       `}</style>
 
       {/* ── Header ─── */}
