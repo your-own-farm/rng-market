@@ -51,7 +51,9 @@ jobs:
       - name: Deploy to Firebase Hosting (preview channel)
         if: github.ref == 'refs/heads/preview'
         run: |
-          npx firebase-tools hosting:channel:deploy preview \
+          CHANNEL="${{ vars.FIREBASE_PREVIEW_CHANNEL }}"
+          if [ -z "$CHANNEL" ]; then CHANNEL="preview"; fi
+          npx firebase-tools hosting:channel:deploy "$CHANNEL" \
             --only hosting:market \
             --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} \
             --non-interactive
