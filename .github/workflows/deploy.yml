@@ -52,7 +52,10 @@ jobs:
         if: github.ref == 'refs/heads/preview'
         run: |
           CHANNEL="${{ vars.FIREBASE_PREVIEW_CHANNEL }}"
-          if [ -z "$CHANNEL" ]; then CHANNEL="preview"; fi
+          if [ -z "$CHANNEL" ]; then
+            echo "FIREBASE_PREVIEW_CHANNEL is not set. Configure it in GitHub Actions Variables."
+            exit 1
+          fi
           npx firebase-tools hosting:channel:deploy "$CHANNEL" \
             --only market \
             --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} \
