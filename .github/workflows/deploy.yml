@@ -54,6 +54,6 @@ jobs:
           CHANNEL="${{ vars.FIREBASE_PREVIEW_CHANNEL }}"
           if [ -z "$CHANNEL" ]; then CHANNEL="preview"; fi
           npx firebase-tools hosting:channel:deploy "$CHANNEL" \
-            --only hosting:market \
+            --only market \
             --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} \
             --non-interactive
