@@ -290,6 +290,92 @@ export async function fetchAgmarknetHistory(cropId: string, state?: string | nul
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Price-range comparison
+//
+// Builds two ranges from the cached history series:
+//
+//   today      — last 7 days of mandi-reports
+//   lastSeason — the same ±21-day calendar window one year ago
+//                (or the earliest data we have if the rolling resource
+//                doesn't reach that far back)
+//
+// Both ranges expose {min, median, max, samples} so the Calculator can render
+// them as immutable bars + an honest profit envelope rather than a single
+// "best-guess" number. Re-uses the history fetcher's cache — no extra OGD
+// calls beyond what we'd already make for the forecast.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PriceRange {
+  min:     number;
+  max:     number;
+  median:  number;
+  samples: number;
+  /** ISO start / end of the window used. */
+  windowFrom: string;
+  windowTo:   string;
+}
+
+export interface PriceComparison {
+  today:      PriceRange | null;
+  lastSeason: PriceRange | null;
+  /** % change of today's median vs last season's median. */
+  yoyPct: number | null;
+  /** Where the numbers came from. */
+  source: "data.gov.in" | "demo";
+}
+
+function rangeOf(points: PricePoint[]): PriceRange | null {
+  if (points.length === 0) return null;
+  const sorted = [...points].sort((a, b) => a.price - b.price);
+  const dates  = points.map((p) => p.date.getTime()).sort((a, b) => a - b);
+  return {
+    min:        sorted[0].price,
+    max:        sorted[sorted.length - 1].price,
+    median:     sorted[Math.floor(sorted.length / 2)].price,
+    samples:    points.length,
+    windowFrom: new Date(dates[0]).toISOString().slice(0, 10),
+    windowTo:   new Date(dates[dates.length - 1]).toISOString().slice(0, 10),
+  };
+}
+
+/** Build today + last-season ranges for a crop using the cached history. */
+export async function fetchPriceRanges(cropId: string, state?: string | null): Promise<PriceComparison> {
+  // Reuse the cached series — no extra fetch beyond the forecast path.
+  const series = await fetchAgmarknetHistory(cropId, state, 1000);
+
+  if (series.length === 0) {
+    return { today: null, lastSeason: null, yoyPct: null, source: "demo" };
+  }
+
+  const now      = Date.now();
+  const day      = 24 * 60 * 60 * 1000;
+  const week     = 7 * day;
+  const yearAgo  = now - 365 * day;
+
+  const todayPts = series.filter((p) => now - p.date.getTime() <= week);
+  // ±21 days around the same date last year.
+  const lastPts  = series.filter((p) => Math.abs(p.date.getTime() - yearAgo) <= 21 * day);
+
+  // If the rolling resource doesn't reach a year back, fall back to the
+  // oldest window we *do* have, so the farmer still gets *some* comparison.
+  let lastPtsEffective = lastPts;
+  if (lastPtsEffective.length === 0) {
+    const oldest = series[0].date.getTime();
+    const oldWindowEnd = oldest + 21 * day;
+    lastPtsEffective = series.filter((p) => p.date.getTime() <= oldWindowEnd);
+  }
+
+  const today      = rangeOf(todayPts.length > 0 ? todayPts : series.slice(-7));
+  const lastSeason = rangeOf(lastPtsEffective);
+
+  const yoyPct = today && lastSeason
+    ? ((today.median - lastSeason.median) / lastSeason.median) * 100
+    : null;
+
+  return { today, lastSeason, yoyPct, source: "data.gov.in" };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // React hooks
 // ─────────────────────────────────────────────────────────────────────────────
 export function useAgmarknetSnapshot(state?: string | null) {
