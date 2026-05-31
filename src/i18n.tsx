@@ -219,6 +219,23 @@ const en: Dict = {
   "mode.chemical":           "Chemical",
   "mode.best.organic":       "Organic wins",
   "mode.best.chemical":      "Chemical wins",
+
+  // Mood + farmer-friendly labels
+  "mood.happy":              "Perfect",
+  "mood.ok":                 "Good",
+  "mood.meh":                "OK",
+  "mood.sad":                "Tough",
+  "label.profit.simple":     "You can earn",
+  "label.profit.total":      "Total for your land",
+  "label.if.organic":        "If you go organic",
+  "label.if.chemical":       "If you use urea/DAP",
+  "label.tap.expand":        "Tap to see why",
+  "label.show.all":          "Show full comparison",
+  "label.hide.all":          "Hide comparison",
+  "label.harvest.in":        "Ready in",
+  "label.days":              "days",
+  "ranking.title":           "Top crops for your land",
+  "ranking.sub":             "Longest bar = most money. Tap a crop to see details.",
 };
 
 // Hindi (Devanagari)
@@ -395,6 +412,22 @@ const hi: Dict = {
   "mode.chemical":           "रासायनिक",
   "mode.best.organic":       "जैविक बेहतर",
   "mode.best.chemical":      "रासायनिक बेहतर",
+
+  "mood.happy":              "बहुत अच्छा",
+  "mood.ok":                 "अच्छा",
+  "mood.meh":                "ठीक",
+  "mood.sad":                "कठिन",
+  "label.profit.simple":     "आप कमा सकते हैं",
+  "label.profit.total":      "आपकी कुल ज़मीन पर",
+  "label.if.organic":        "अगर जैविक खेती करें",
+  "label.if.chemical":       "अगर यूरिया/DAP डालें",
+  "label.tap.expand":        "विवरण के लिए दबाएँ",
+  "label.show.all":          "पूरी तुलना दिखाएँ",
+  "label.hide.all":          "तुलना छिपाएँ",
+  "label.harvest.in":        "तैयार होगी",
+  "label.days":              "दिन में",
+  "ranking.title":           "आपकी ज़मीन के लिए सबसे अच्छी फसलें",
+  "ranking.sub":             "लंबी पट्टी = ज़्यादा पैसा। फसल पर टैप करें।",
 };
 
 // Marathi
@@ -568,6 +601,22 @@ const mr: Dict = {
   "mode.chemical":           "रासायनिक",
   "mode.best.organic":       "सेंद्रिय जिंकले",
   "mode.best.chemical":      "रासायनिक जिंकले",
+
+  "mood.happy":              "उत्तम",
+  "mood.ok":                 "चांगलं",
+  "mood.meh":                "ठीक",
+  "mood.sad":                "अवघड",
+  "label.profit.simple":     "तुम्ही कमवू शकता",
+  "label.profit.total":      "तुमच्या एकूण जमिनीवर",
+  "label.if.organic":        "सेंद्रिय शेती केली तर",
+  "label.if.chemical":       "रासायनिक खत वापरलं तर",
+  "label.tap.expand":        "तपशीलासाठी टॅप करा",
+  "label.show.all":          "संपूर्ण तुलना दाखवा",
+  "label.hide.all":          "तुलना लपवा",
+  "label.harvest.in":        "तयार होईल",
+  "label.days":              "दिवसात",
+  "ranking.title":           "तुमच्या जमिनीसाठी उत्तम पिकं",
+  "ranking.sub":             "मोठी पट्टी = जास्त पैसा. पिकावर टॅप करा.",
 };
 
 // Tamil
@@ -741,6 +790,22 @@ const ta: Dict = {
   "mode.chemical":           "ரசாயன",
   "mode.best.organic":       "இயற்கை சிறந்தது",
   "mode.best.chemical":      "ரசாயன சிறந்தது",
+
+  "mood.happy":              "சிறப்பு",
+  "mood.ok":                 "நல்லது",
+  "mood.meh":                "சரி",
+  "mood.sad":                "கடினம்",
+  "label.profit.simple":     "நீங்கள் சம்பாதிக்கலாம்",
+  "label.profit.total":      "உங்கள் மொத்த நிலத்துக்கு",
+  "label.if.organic":        "இயற்கை விவசாயம் செய்தால்",
+  "label.if.chemical":       "யூரியா/DAP பயன்படுத்தினால்",
+  "label.tap.expand":        "விவரத்திற்கு தட்டவும்",
+  "label.show.all":          "முழு ஒப்பீடு காட்டு",
+  "label.hide.all":          "ஒப்பீட்டை மறை",
+  "label.harvest.in":        "தயாராகும்",
+  "label.days":              "நாட்களில்",
+  "ranking.title":           "உங்கள் நிலத்துக்கு சிறந்த பயிர்கள்",
+  "ranking.sub":             "நீளமான பட்டை = அதிக பணம். தட்டவும்.",
 };
 
 const DICT: Record<Locale, Dict> = { en, hi, mr, ta };

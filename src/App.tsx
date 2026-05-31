@@ -14,6 +14,7 @@ import {
   Dropdown, DropdownOption,
   BG, CARD, CARD_HI, BORDER, BORDER_HI, GREEN, AMBER, MUTED, TEXT, TEXT_DIM,
 } from "./ui";
+import { KeyframesGlobal } from "./animations";
 
 type TabId = "advisor" | "weather" | "prices" | "calculator" | "knowledge";
 
@@ -224,6 +225,7 @@ const OnlineBadge: React.FC<{ online: boolean; live: boolean }> = ({ online, liv
 // ── Root export ───────────────────────────────────────────────────────────────
 const App: React.FC = () => (
   <I18nProvider>
+    <KeyframesGlobal />
     <Inner />
   </I18nProvider>
 );

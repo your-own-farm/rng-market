@@ -9,6 +9,7 @@ import {
   Dropdown, DropdownOption, SectionTitle, Pill,
   CARD, CARD_HI, BORDER, GREEN, RED, AMBER, BLUE, MUTED, TEXT, TEXT_DIM,
 } from "../ui";
+import { AnimatedWeatherIcon, FadeUp } from "../animations";
 
 const STORAGE_KEY = "kinsar.advisor.inputs";
 
@@ -82,24 +83,28 @@ const Weather: React.FC = () => {
             <SummaryTile icon={verdict.icon} label={t("weather.sowing.window")} value={verdict.label} tone={verdict.tone} />
           </div>
 
-          {/* Daily strip */}
+          {/* Daily strip — animated tiles */}
           <div style={{ display: "grid", gap: "0.6rem", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
-            {weather.data.daily.map((d) => (
-              <div key={d.date} style={{
-                background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12,
-                padding: "0.9rem 0.7rem", textAlign: "center",
-              }}>
-                <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                  {fmtDate(d.date)}
+            {weather.data.daily.map((d, i) => (
+              <FadeUp key={d.date} delay={i * 50}>
+                <div style={{
+                  background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12,
+                  padding: "0.9rem 0.7rem", textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 11, color: MUTED, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                    {fmtDate(d.date)}
+                  </div>
+                  <div style={{ margin: "0.4rem 0", height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <AnimatedWeatherIcon code={d.weatherCode} size={32} />
+                  </div>
+                  <div style={{ fontSize: 13, color: TEXT, fontWeight: 700 }}>
+                    {d.tMax.toFixed(0)}° <span style={{ color: MUTED, fontWeight: 500 }}>/ {d.tMin.toFixed(0)}°</span>
+                  </div>
+                  {d.rainMm > 1 && (
+                    <div style={{ fontSize: 11, color: BLUE, marginTop: 4 }}>💧 {d.rainMm.toFixed(0)} mm</div>
+                  )}
                 </div>
-                <div style={{ fontSize: "1.8rem", margin: "0.3rem 0" }}>{weatherIcon(d.weatherCode)}</div>
-                <div style={{ fontSize: 13, color: TEXT, fontWeight: 700 }}>
-                  {d.tMax.toFixed(0)}° <span style={{ color: MUTED, fontWeight: 500 }}>/ {d.tMin.toFixed(0)}°</span>
-                </div>
-                {d.rainMm > 1 && (
-                  <div style={{ fontSize: 11, color: BLUE, marginTop: 4 }}>💧 {d.rainMm.toFixed(0)} mm</div>
-                )}
-              </div>
+              </FadeUp>
             ))}
           </div>
 
