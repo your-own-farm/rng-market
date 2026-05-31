@@ -18,6 +18,7 @@ export type SoilType =
 
 export type Season = "kharif" | "rabi" | "zaid";
 export type Water = "low" | "medium" | "high";
+export type NutrientLevel = "low" | "medium" | "high";
 
 export interface CropKB {
   id: string;
@@ -41,6 +42,13 @@ export interface CropKB {
   notes: Partial<Record<Locale, string[]>> & { en: string[] };
   /** Common pests (i18n-light; English only) */
   pests: string[];
+  /** Nutrient demand profile — used to grade soil-vs-crop NPK fit. */
+  nutrientNeed: { n: NutrientLevel; p: NutrientLevel; k: NutrientLevel };
+  /** Acceptable soil pH window (inclusive). */
+  phRange: [number, number];
+  /** Approximate organic-vs-chemical yield ratio (0..1.05). Most studies put
+   *  it at 0.85–0.95 in the first cycle; some legumes are near-parity. */
+  organicYieldRatio: number;
 }
 
 // ── Catalog ───────────────────────────────────────────────────────────────────
@@ -76,6 +84,9 @@ export const CROPS: CropKB[] = [
       ],
     },
     pests: ["Fruit borer", "Whitefly", "Leaf curl virus"],
+    nutrientNeed: { n: "high",   p: "high",   k: "high"   },
+    phRange: [6.0, 7.0],
+    organicYieldRatio: 0.88,
   },
   {
     id: "onion",
@@ -99,6 +110,9 @@ export const CROPS: CropKB[] = [
       mr: ["3–6 महिने साठवण शक्य.", "नाशिक, सोलापूरमध्ये चांगला भाव."],
     },
     pests: ["Thrips", "Purple blotch"],
+    nutrientNeed: { n: "medium", p: "high",   k: "high"   },
+    phRange: [6.0, 7.5],
+    organicYieldRatio: 0.90,
   },
   {
     id: "potato",
@@ -121,6 +135,9 @@ export const CROPS: CropKB[] = [
       hi: ["यूपी, बंगाल में ज़्यादा मुकाबला।", "कोल्ड स्टोरेज न हो तो 30 दिन में बेचें।"],
     },
     pests: ["Late blight", "Tuber moth"],
+    nutrientNeed: { n: "high",   p: "medium", k: "high"   },
+    phRange: [5.0, 6.5],
+    organicYieldRatio: 0.85,
   },
   {
     id: "rice",
@@ -143,6 +160,9 @@ export const CROPS: CropKB[] = [
       hi: ["FCI से एमएसपी की गारंटी।", "पानी ज़्यादा चाहिए — सिंचाई पक्की हो।"],
     },
     pests: ["Stem borer", "Brown plant-hopper"],
+    nutrientNeed: { n: "high",   p: "medium", k: "medium" },
+    phRange: [5.5, 7.0],
+    organicYieldRatio: 0.87,
   },
   {
     id: "wheat",
@@ -162,6 +182,9 @@ export const CROPS: CropKB[] = [
       hi: ["पंजाब, हरियाणा, एमपी में एमएसपी पर खरीद।", "जनवरी अंत में पाला से सावधान।"],
     },
     pests: ["Aphid", "Rust"],
+    nutrientNeed: { n: "high",   p: "medium", k: "medium" },
+    phRange: [6.0, 7.5],
+    organicYieldRatio: 0.86,
   },
   {
     id: "soybean",
@@ -182,6 +205,10 @@ export const CROPS: CropKB[] = [
       mr: ["मध्य प्रदेश, महाराष्ट्रात प्रमुख.", "दुष्काळसहिष्णू."],
     },
     pests: ["Girdle beetle", "Stem fly"],
+    /* Legume — fixes its own nitrogen. */
+    nutrientNeed: { n: "low",    p: "medium", k: "medium" },
+    phRange: [6.0, 7.5],
+    organicYieldRatio: 0.94,
   },
   {
     id: "cotton",
@@ -202,6 +229,9 @@ export const CROPS: CropKB[] = [
       mr: ["6 महिन्यांचा कालावधी.", "गुलाबी बोंडआळी सर्वात मोठा धोका."],
     },
     pests: ["Pink bollworm", "Whitefly"],
+    nutrientNeed: { n: "high",   p: "high",   k: "high"   },
+    phRange: [5.8, 8.0],
+    organicYieldRatio: 0.82,
   },
   {
     id: "maize",
@@ -221,6 +251,9 @@ export const CROPS: CropKB[] = [
       hi: ["मांग बढ़ रही — मुर्गी पालन और इथेनॉल।", "मध्यम बारिश में भी ठीक।"],
     },
     pests: ["Fall armyworm", "Stem borer"],
+    nutrientNeed: { n: "high",   p: "high",   k: "medium" },
+    phRange: [5.5, 7.5],
+    organicYieldRatio: 0.85,
   },
   {
     id: "groundnut",
@@ -240,6 +273,10 @@ export const CROPS: CropKB[] = [
       hi: ["गुजरात, आंध्र में मुख्य।", "रेतीली ज़मीन में अच्छा।"],
     },
     pests: ["Leaf miner", "Aphid"],
+    /* Legume — light on nitrogen. */
+    nutrientNeed: { n: "low",    p: "high",   k: "medium" },
+    phRange: [6.0, 7.5],
+    organicYieldRatio: 0.92,
   },
   {
     id: "chilli",
@@ -263,6 +300,9 @@ export const CROPS: CropKB[] = [
       ta: ["குண்டூரிலிருந்து ஏற்றுமதி வாய்ப்பு.", "உலர்ந்த மிளகாய் 8–12 மாதம் சேமிக்கலாம்."],
     },
     pests: ["Thrips", "Mite"],
+    nutrientNeed: { n: "high",   p: "high",   k: "high"   },
+    phRange: [6.0, 7.5],
+    organicYieldRatio: 0.85,
   },
   {
     id: "sugarcane",
@@ -286,6 +326,9 @@ export const CROPS: CropKB[] = [
       mr: ["12 महिन्यांचं पीक.", "FRP हमी आहे, पण उशिरा पेमेंट सामान्य."],
     },
     pests: ["Early shoot borer", "Whitefly"],
+    nutrientNeed: { n: "high",   p: "medium", k: "high"   },
+    phRange: [6.0, 7.5],
+    organicYieldRatio: 0.83,
   },
   {
     id: "banana",
@@ -306,6 +349,9 @@ export const CROPS: CropKB[] = [
       ta: ["அதிக முதலீடு, அதிக வருமானம்.", "திருச்சி, ஜல்கான் முக்கிய பகுதி."],
     },
     pests: ["Sigatoka leaf spot", "Banana weevil"],
+    nutrientNeed: { n: "high",   p: "high",   k: "high"   },
+    phRange: [6.0, 7.5],
+    organicYieldRatio: 0.86,
   },
   {
     id: "turmeric",
@@ -325,6 +371,9 @@ export const CROPS: CropKB[] = [
       hi: ["यूएस, ईयू में निर्यात मांग।", "24 महीने तक भंडारण।"],
     },
     pests: ["Rhizome rot", "Leaf spot"],
+    nutrientNeed: { n: "medium", p: "high",   k: "high"   },
+    phRange: [5.5, 7.5],
+    organicYieldRatio: 0.93,
   },
   {
     id: "moong",
@@ -347,6 +396,10 @@ export const CROPS: CropKB[] = [
       hi: ["75 दिन में तैयार — ज़ायद के लिए बेहतरीन।", "मिट्टी में नाइट्रोजन बढ़ाता है।"],
     },
     pests: ["Yellow mosaic virus", "Whitefly"],
+    /* Legume — fixes nitrogen. */
+    nutrientNeed: { n: "low",    p: "medium", k: "medium" },
+    phRange: [6.2, 7.5],
+    organicYieldRatio: 0.95,
   },
 ];
 

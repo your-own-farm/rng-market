@@ -1,174 +1,289 @@
 // ── Crop recommender ─────────────────────────────────────────────────────────
-// Pure function: takes farm inputs + signals (weather, prices) and returns a
-// ranked list of crop choices with expected net profit per acre.
+// Pure, inspectable. Given soil + weather + live prices, returns for each
+// suitable crop:
+//   • a per-factor yield multiplier (so the UI can show *why* the yield is what
+//     it is — soil match, NPK, pH, rainfall, heat/cold, organic-vs-chemical),
+//   • an organic vs chemical net-profit comparison,
+//   • a 90-day price forecast based on demand momentum + seasonal supply,
+//   • soil / weather match percentages for the comparison table.
 //
-// Deliberately deterministic and inspectable — every score component is named
-// so we can show the farmer *why* a crop made the list.
+// The farmer enters very little — location and acres. Every other number on
+// screen is derived here.
 
-import { CROPS, CropKB, Season, SoilType, currentSeason } from "./crops";
+import { CROPS, CropKB, Season, SoilType, NutrientLevel, currentSeason } from "./crops";
 import { CropPriceVM } from "./types";
 import { WeatherData } from "./useWeather";
+import { SoilData } from "./useSoil";
 
 export interface RecommenderInput {
   state: string | null;
   district: string | null;
   acres: number;
-  soil: SoilType | null;
-  /** Override the auto-detected season. */
+  /** Active season — auto-derived from the calendar if not provided. */
   season?: Season;
-  mode: "organic" | "urea";
   prices: CropPriceVM[];
   weather: WeatherData | null;
+  soil: SoilData | null;
+}
+
+/** Each factor in [0..1.3]. 1.0 = neutral, >1 boosts yield, <1 cuts yield. */
+export interface YieldFactors {
+  soilType:    number;   // does the crop accept this soil family?
+  nutrients:   number;   // NPK match
+  ph:          number;   // is pH inside the crop's tolerated band?
+  rainfall:    number;   // 7-day forecast rain vs crop water need
+  temperature: number;   // heat / cold / frost stress
+  mode:        number;   // organic = crop.organicYieldRatio, chemical = 1.0
+}
+
+export interface ModeOutcome {
+  mode:           "organic" | "chemical";
+  yieldQtl:       number;       // qtl/acre after every factor applied
+  cost:           number;       // ₹/acre input cost in this mode
+  revenue:        number;       // ₹/acre revenue at expected sell price
+  net:            number;       // ₹/acre net profit
+  factors:        YieldFactors; // breakdown — same for both modes except `mode`
 }
 
 export interface Recommendation {
-  crop: CropKB;
-  /** Net profit per acre — the primary ranking score. */
-  netProfitPerAcre: number;
-  grossRevenuePerAcre: number;
-  inputCostPerAcre: number;
-  expectedYield: number;          // qtl/acre
-  expectedPrice: number;          // ₹/qtl
-  weatherRisk: "low" | "medium" | "high";
-  demand: "rising" | "stable" | "falling";
-  confidence: number;             // 0..1
-  /** Reasons surfaced in the UI. Each is an i18n key into the crop's notes
-   *  plus dynamically generated ones from the engine. */
-  reasons: string[];
+  crop:           CropKB;
+  organic:        ModeOutcome;
+  chemical:       ModeOutcome;
+  bestMode:       "organic" | "chemical";
+  bestNet:        number;
+  /** Today's median mandi price (₹/quintal) for this crop in the chosen state. */
+  priceToday:     number;
+  /** 90-day forward price at expected harvest (₹/quintal). */
+  priceAtHarvest: number;
+  priceSource:    "live" | "msp";
+  /** 0..100 — how well the soil suits this crop. */
+  soilMatchPct:    number;
+  /** 0..100 — how well current weather suits this crop. */
+  weatherMatchPct: number;
+  weatherRisk:   "low" | "medium" | "high";
+  demand:        "rising" | "stable" | "falling";
+  confidence:    number;     // 0..1
+  reasons:       string[];   // synthetic keys → reasonLabel()
   daysToHarvest: number;
+  harvestMonth:  number;     // 1..12 — when the crop will hit the mandi
 }
 
-function clamp(n: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, n));
+// ── Utilities ─────────────────────────────────────────────────────────────────
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
+function levelScore(have: NutrientLevel, need: NutrientLevel): number {
+  // perfect match → 1.0, one notch off → 0.85, two notches off → 0.7
+  const order: NutrientLevel[] = ["low", "medium", "high"];
+  const diff = Math.abs(order.indexOf(have) - order.indexOf(need));
+  // If we *have* high and only *need* medium, that's fine (not a penalty).
+  if (order.indexOf(have) >= order.indexOf(need)) return 1.0;
+  return diff === 1 ? 0.85 : 0.7;
 }
 
-function recentPriceFor(crop: CropKB, prices: CropPriceVM[], stateName: string | null): { price: number; source: "live" | "msp" } {
-  const matches = prices.filter(
-    (p) => p.crop.toLowerCase() === crop.id.toLowerCase() || p.crop.toLowerCase().includes(crop.id)
+function nutrientFactor(soil: SoilData | null, crop: CropKB): number {
+  if (!soil) return 0.95;
+  const n = levelScore(soil.fertility.n, crop.nutrientNeed.n);
+  const p = levelScore(soil.fertility.p, crop.nutrientNeed.p);
+  const k = levelScore(soil.fertility.k, crop.nutrientNeed.k);
+  // N matters most for cereals/leafy, but a simple average is robust enough.
+  return clamp((n + p + k) / 3, 0.7, 1.05);
+}
+
+function phFactor(soil: SoilData | null, crop: CropKB): number {
+  if (!soil || soil.ph == null) return 0.95;
+  const [lo, hi] = crop.phRange;
+  if (soil.ph >= lo && soil.ph <= hi) return 1.0;
+  const dist = soil.ph < lo ? lo - soil.ph : soil.ph - hi;
+  return clamp(1 - dist * 0.15, 0.7, 1.0);
+}
+
+function soilTypeFactor(soil: SoilData | null, crop: CropKB): number {
+  if (!soil) return 0.9;
+  return crop.soils.includes(soil.classified) ? 1.0 : 0.78;
+}
+
+function rainfallFactor(w: WeatherData | null, crop: CropKB): number {
+  if (!w) return 1.0;
+  const rain = w.totalRain7d;
+  switch (crop.waterNeed) {
+    case "high":
+      if (rain < 20)        return 0.78;
+      if (rain > 250)       return 0.88;
+      return 1.06;
+    case "medium":
+      if (rain < 8)         return 0.92;
+      if (rain > 200)       return 0.86;
+      return 1.0;
+    case "low":
+      if (rain > 150)       return 0.72;
+      return 1.0;
+  }
+}
+
+function temperatureFactor(w: WeatherData | null): number {
+  if (!w) return 1.0;
+  let f = 1.0;
+  if (w.avgTempMax > 40) f *= 0.83;
+  if (w.avgTempMax > 44) f *= 0.85;
+  if (w.avgTempMin < 8)  f *= 0.88;
+  if (w.avgTempMin < 3)  f *= 0.85;
+  return clamp(f, 0.55, 1.05);
+}
+
+function weatherRiskFromFactor(f: YieldFactors): "low" | "medium" | "high" {
+  const combined = f.rainfall * f.temperature;
+  if (combined < 0.78) return "high";
+  if (combined < 0.94) return "medium";
+  return "low";
+}
+
+// ── Price discovery ──────────────────────────────────────────────────────────
+function priceToday(crop: CropKB, prices: CropPriceVM[], stateName: string | null): { price: number; source: "live" | "msp" } {
+  const m = prices.filter((p) =>
+    p.crop.toLowerCase() === crop.id.toLowerCase() || p.crop.toLowerCase().includes(crop.id)
   );
-  if (matches.length === 0) return { price: crop.baseFloorPrice, source: "msp" };
-
-  // Prefer same state, else national median.
+  if (m.length === 0) return { price: crop.baseFloorPrice, source: "msp" };
   if (stateName) {
-    const here = matches.filter((p) => p.state === stateName);
+    const here = m.filter((p) => p.state === stateName);
     if (here.length > 0) {
-      const med = here.map((p) => p.price).sort((a, b) => a - b)[Math.floor(here.length / 2)];
-      return { price: med, source: "live" };
+      const sorted = here.map((p) => p.price).sort((a, b) => a - b);
+      return { price: sorted[Math.floor(sorted.length / 2)], source: "live" };
     }
   }
-  const all = matches.map((p) => p.price).sort((a, b) => a - b);
+  const all = m.map((p) => p.price).sort((a, b) => a - b);
   return { price: all[Math.floor(all.length / 2)], source: "live" };
 }
 
-function weatherAdjustment(crop: CropKB, w: WeatherData | null): { yieldFactor: number; risk: "low" | "medium" | "high" } {
-  if (!w) return { yieldFactor: 1, risk: "medium" };
-
-  let yieldFactor = 1;
-
-  // Rain matters more for thirsty crops.
-  const rain = w.totalRain7d;
-  if (crop.waterNeed === "high") {
-    if (rain < 20)        yieldFactor *= 0.75;
-    else if (rain > 250)  yieldFactor *= 0.85;
-    else                  yieldFactor *= 1.05;
-  } else if (crop.waterNeed === "medium") {
-    if (rain < 8)         yieldFactor *= 0.9;
-    else if (rain > 200)  yieldFactor *= 0.85;
-    else                  yieldFactor *= 1.0;
-  } else {
-    // Low-water crops actually suffer in heavy rain (groundnut, moong, soybean root-rot).
-    if (rain > 150)       yieldFactor *= 0.7;
-    else                  yieldFactor *= 1.0;
+/** Tiny forward-price heuristic — supply glut at harvest depresses prices,
+ *  demand momentum lifts them. Multiplies today's price by a factor in
+ *  roughly 0.85..1.20.  The PDF's full Temporal Fusion Transformer would
+ *  replace this; until then we make the *direction* visible to the farmer. */
+function priceAtHarvest(crop: CropKB, today: number, daysOut: number, season: Season): number {
+  let f = 1.0;
+  // Demand momentum.
+  if (crop.demandTrend === 1)  f *= 1.06;
+  if (crop.demandTrend === -1) f *= 0.94;
+  // Glut effect — short-cycle crops harvested by everyone at once.
+  if (daysOut <= 120 && (season === "kharif" || season === "rabi")) f *= 0.93;
+  // MSP crops have a hard floor — clamp downside.
+  if (crop.baseFloorPrice && today < crop.baseFloorPrice * 1.05) {
+    return Math.max(crop.baseFloorPrice, Math.round(today * f));
   }
-
-  // Heat & cold.
-  if (w.avgTempMax > 40)  yieldFactor *= 0.85;
-  if (w.avgTempMin < 5)   yieldFactor *= 0.8;
-
-  yieldFactor = clamp(yieldFactor, 0.4, 1.2);
-
-  const risk: "low" | "medium" | "high" =
-    w.riskScore >= 0.6 ? "high" : w.riskScore >= 0.3 ? "medium" : "low";
-
-  return { yieldFactor, risk };
+  return Math.round(today * f);
 }
 
-function soilFit(crop: CropKB, soil: SoilType | null): number {
-  if (!soil) return 0.9; // mild penalty for unknown soil
-  return crop.soils.includes(soil) ? 1 : 0.7;
+// ── Match percentages for the comparison table ────────────────────────────────
+function asPct(...factors: number[]): number {
+  const product = factors.reduce((a, b) => a * b, 1);
+  return Math.round(clamp(product, 0, 1.05) * 100);
 }
 
-function seasonFit(crop: CropKB, season: Season): number {
-  return crop.seasons.includes(season) ? 1 : 0;
-}
-
+// ── Main entry ────────────────────────────────────────────────────────────────
 export function recommend(input: RecommenderInput, topN = 5): Recommendation[] {
   const season = input.season ?? currentSeason();
 
-  const all = CROPS.map((crop): Recommendation | null => {
-    if (seasonFit(crop, season) === 0) return null;
+  const candidates = CROPS.filter((c) => c.seasons.includes(season))
+    .map<Recommendation>((crop) => {
+      // Shared factors across both modes.
+      const f: YieldFactors = {
+        soilType:    soilTypeFactor(input.soil, crop),
+        nutrients:   nutrientFactor(input.soil, crop),
+        ph:          phFactor(input.soil, crop),
+        rainfall:    rainfallFactor(input.weather, crop),
+        temperature: temperatureFactor(input.weather),
+        mode:        1.0,   // overridden per-mode below
+      };
 
-    const fit = soilFit(crop, input.soil);
-    const { yieldFactor, risk } = weatherAdjustment(crop, input.weather);
+      const baseYield = crop.yieldQtlPerAcre.avg;
+      const sharedMul = f.soilType * f.nutrients * f.ph * f.rainfall * f.temperature;
 
-    const baseYield  = crop.yieldQtlPerAcre.avg;
-    const yieldQtl   = baseYield * yieldFactor * (0.85 + 0.15 * fit);
-    const price      = recentPriceFor(crop, input.prices, input.state);
-    const revenue    = yieldQtl * price.price;
-    const cost       = crop.inputCost[input.mode];
-    const net        = revenue - cost;
+      const { price, source } = priceToday(crop, input.prices, input.state);
+      const today = new Date();
+      const harvestDate = new Date(today.getTime() + crop.daysToHarvest * 86400000);
+      const harvestMonth = harvestDate.getMonth() + 1;
+      const fwdPrice = priceAtHarvest(crop, price, crop.daysToHarvest, season);
+      // For profit math we use the harvest price the farmer would actually realise.
+      const realisedPrice = fwdPrice;
 
-    // Confidence: live price + matching soil + low risk all contribute.
-    let confidence = 0.4;
-    if (price.source === "live") confidence += 0.2;
-    if (input.soil && crop.soils.includes(input.soil)) confidence += 0.2;
-    if (input.weather && risk === "low") confidence += 0.15;
-    if (input.district) confidence += 0.05;
-    confidence = clamp(confidence, 0, 1);
+      // Build each mode outcome.
+      const chemical: ModeOutcome = {
+        mode: "chemical",
+        yieldQtl: Math.round(baseYield * sharedMul * 1.0),
+        cost:     crop.inputCost.urea,
+        revenue:  0, net: 0,
+        factors:  { ...f, mode: 1.0 },
+      };
+      chemical.revenue = Math.round(chemical.yieldQtl * realisedPrice);
+      chemical.net     = chemical.revenue - chemical.cost;
 
-    // Reasons displayed in the UI ("Why this crop?").
-    const reasons: string[] = [];
-    if (price.source === "live") reasons.push(`reason.live-price`);
-    if (input.soil && crop.soils.includes(input.soil)) reasons.push(`reason.soil-match:${input.soil}`);
-    if (risk === "low") reasons.push(`reason.weather-good`);
-    if (crop.demandTrend === 1) reasons.push(`reason.demand-rising`);
-    if (crop.daysToHarvest <= 90) reasons.push(`reason.quick-cycle`);
-    if (net > cost) reasons.push(`reason.high-margin`);
+      const organic: ModeOutcome = {
+        mode: "organic",
+        yieldQtl: Math.round(baseYield * sharedMul * crop.organicYieldRatio),
+        cost:     crop.inputCost.organic,
+        revenue:  0, net: 0,
+        factors:  { ...f, mode: crop.organicYieldRatio },
+      };
+      organic.revenue = Math.round(organic.yieldQtl * realisedPrice);
+      organic.net     = organic.revenue - organic.cost;
 
-    return {
-      crop,
-      netProfitPerAcre:    Math.round(net),
-      grossRevenuePerAcre: Math.round(revenue),
-      inputCostPerAcre:    cost,
-      expectedYield:       Math.round(yieldQtl),
-      expectedPrice:       Math.round(price.price),
-      weatherRisk:         risk,
-      demand:              crop.demandTrend === 1 ? "rising" : crop.demandTrend === -1 ? "falling" : "stable",
-      confidence,
-      reasons,
-      daysToHarvest:       crop.daysToHarvest,
-    };
-  }).filter((r): r is Recommendation => r !== null);
+      const bestMode: "organic" | "chemical" = organic.net >= chemical.net ? "organic" : "chemical";
+      const bestNet = Math.max(organic.net, chemical.net);
 
-  // Rank: net profit primary, confidence as tiebreaker.
-  all.sort((a, b) =>
-    b.netProfitPerAcre !== a.netProfitPerAcre
-      ? b.netProfitPerAcre - a.netProfitPerAcre
-      : b.confidence - a.confidence
+      // Confidence: live price + good signal coverage.
+      let confidence = 0.4;
+      if (source === "live")          confidence += 0.2;
+      if (input.soil?.source === "soilgrids") confidence += 0.2;
+      if (input.weather?.source === "open-meteo") confidence += 0.15;
+      if (input.district)             confidence += 0.05;
+
+      // Reasons surfaced to the UI.
+      const reasons: string[] = [];
+      if (source === "live")                            reasons.push("reason.live-price");
+      if (input.soil && crop.soils.includes(input.soil.classified)) reasons.push(`reason.soil-match:${input.soil.classified}`);
+      if (f.rainfall * f.temperature >= 0.95)           reasons.push("reason.weather-good");
+      if (crop.demandTrend === 1)                       reasons.push("reason.demand-rising");
+      if (crop.daysToHarvest <= 90)                     reasons.push("reason.quick-cycle");
+      if (bestNet > 30000)                              reasons.push("reason.high-margin");
+      if (input.soil && f.nutrients >= 1.0)             reasons.push("reason.nutrients-good");
+      if (input.soil && f.ph >= 0.98)                   reasons.push("reason.ph-good");
+      if (fwdPrice > price)                             reasons.push("reason.price-forecast-up");
+
+      return {
+        crop,
+        organic, chemical,
+        bestMode,
+        bestNet,
+        priceToday:     price,
+        priceAtHarvest: fwdPrice,
+        priceSource:    source,
+        soilMatchPct:    asPct(f.soilType, f.nutrients, f.ph),
+        weatherMatchPct: asPct(f.rainfall, f.temperature),
+        weatherRisk:    weatherRiskFromFactor(f),
+        demand:         crop.demandTrend === 1 ? "rising" : crop.demandTrend === -1 ? "falling" : "stable",
+        confidence:     clamp(confidence, 0, 1),
+        reasons,
+        daysToHarvest:  crop.daysToHarvest,
+        harvestMonth,
+      };
+    });
+
+  candidates.sort((a, b) =>
+    b.bestNet !== a.bestNet ? b.bestNet - a.bestNet : b.confidence - a.confidence
   );
 
-  return all.slice(0, topN);
+  return candidates.slice(0, topN);
 }
 
-// ── Reason → i18n key/text helper ─────────────────────────────────────────────
-// Each reason is a synthetic key — render it in the UI via this helper so the
-// language layer doesn't need to know about the encoding.
+// ── i18n-light helper used by the UI to render reason keys ────────────────────
 export function reasonLabel(reason: string, t: (k: string) => string): string {
-  if (reason === "reason.live-price")    return "Live mandi price used in the calculation";
-  if (reason === "reason.weather-good")  return "Weather looks favourable for this crop";
-  if (reason === "reason.demand-rising") return "Demand has been rising over the last few seasons";
-  if (reason === "reason.quick-cycle")   return "Quick cycle — money back within 3 months";
-  if (reason === "reason.high-margin")   return "Strong margin even after input costs";
+  if (reason === "reason.live-price")          return "Live mandi price used in calculation";
+  if (reason === "reason.weather-good")        return "Weather forecast favours this crop";
+  if (reason === "reason.demand-rising")       return "Demand has been rising over recent seasons";
+  if (reason === "reason.quick-cycle")         return "Quick cycle — money back in under 3 months";
+  if (reason === "reason.high-margin")         return "Strong margin even after input costs";
+  if (reason === "reason.nutrients-good")      return "Soil NPK matches the crop's needs";
+  if (reason === "reason.ph-good")             return "Soil pH falls inside this crop's optimal band";
+  if (reason === "reason.price-forecast-up")   return "Price expected to rise by harvest";
   if (reason.startsWith("reason.soil-match:")) {
     const soil = reason.split(":")[1];
     return `Your soil (${soil}) suits this crop well`;

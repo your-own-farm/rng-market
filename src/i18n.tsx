@@ -162,6 +162,63 @@ const en: Dict = {
   "ui.share":              "Share",
   "ui.share.msg":          "Check the best crop for your farm — free, no login.",
   "ui.no.api":             "Couldn't reach the data source. Showing offline estimate.",
+
+  // Auto-detection / minimal-input flow
+  "advisor.auto.headline":   "Tell us where & how much. We do the rest.",
+  "advisor.auto.sub":        "Soil, weather and prices are fetched automatically. No paperwork.",
+  "advisor.auto.detect":     "Use my location",
+  "advisor.auto.manual":     "or pick state & district manually",
+  "advisor.auto.size":       "How many acres?",
+  "advisor.auto.acres.other": "Other",
+  "advisor.auto.detected":   "What we detected",
+  "advisor.auto.computing":  "Computing best crops…",
+
+  // Compare table
+  "compare.title":           "Compare side by side",
+  "compare.sub":             "Best value in each row is highlighted.",
+  "compare.metric":          "Metric",
+  "compare.winner":          "Top pick",
+  "compare.factor.title":    "What drives the yield",
+  "compare.factor.sub":      "Multipliers applied to the base yield. 1.00 = neutral.",
+
+  // Factor names
+  "factor.soilType":         "Soil type",
+  "factor.nutrients":        "NPK match",
+  "factor.ph":               "Soil pH",
+  "factor.rainfall":         "Rainfall (7d)",
+  "factor.temperature":      "Heat / cold",
+  "factor.mode":             "Method effect",
+
+  // Comparison rows
+  "row.profit.best":         "Best net profit",
+  "row.profit.organic":      "Net — Organic",
+  "row.profit.chemical":     "Net — Chemical (urea)",
+  "row.yield.chemical":      "Yield — Chemical",
+  "row.yield.organic":       "Yield — Organic",
+  "row.price.now":           "Price today",
+  "row.price.forecast":      "Forecast at harvest",
+  "row.soil.match":          "Soil match",
+  "row.weather.match":       "Weather match",
+  "row.demand":              "Demand",
+  "row.days":                "Days to harvest",
+  "row.confidence":          "Confidence",
+  "row.harvest.month":       "Harvest month",
+
+  // Soil card
+  "soil.detected":           "Soil detected",
+  "soil.npk.n":              "Nitrogen",
+  "soil.npk.p":              "Phosphorus",
+  "soil.npk.k":              "Potassium",
+  "soil.ph.label":           "pH",
+  "soil.fertility.low":      "Low",
+  "soil.fertility.medium":   "Medium",
+  "soil.fertility.high":     "High",
+
+  // Best-mode chips
+  "mode.organic":            "Organic",
+  "mode.chemical":           "Chemical",
+  "mode.best.organic":       "Organic wins",
+  "mode.best.chemical":      "Chemical wins",
 };
 
 // Hindi (Devanagari)
@@ -286,6 +343,58 @@ const hi: Dict = {
   "ui.share":              "शेयर",
   "ui.share.msg":          "अपने खेत के लिए सबसे अच्छी फसल देखें — मुफ़्त, बिना लॉगिन।",
   "ui.no.api":             "डेटा स्रोत नहीं मिला। अनुमान दिखाया जा रहा है।",
+
+  // Auto-detection / minimal input
+  "advisor.auto.headline":   "बस जगह और ज़मीन बताएँ। बाकी हम करेंगे।",
+  "advisor.auto.sub":        "मिट्टी, मौसम और भाव खुद आते हैं। कोई फॉर्म नहीं।",
+  "advisor.auto.detect":     "मेरा स्थान",
+  "advisor.auto.manual":     "या राज्य और ज़िला खुद चुनें",
+  "advisor.auto.size":       "कितनी एकड़?",
+  "advisor.auto.acres.other": "अन्य",
+  "advisor.auto.detected":   "हमने पता लगाया",
+  "advisor.auto.computing":  "सबसे अच्छी फसलें खोजी जा रही हैं…",
+
+  "compare.title":           "साथ-साथ तुलना",
+  "compare.sub":             "हर पंक्ति में सबसे अच्छा मान हरा।",
+  "compare.metric":          "मापदंड",
+  "compare.winner":          "शीर्ष विकल्प",
+  "compare.factor.title":    "उत्पादन किस से तय होता है",
+  "compare.factor.sub":      "आधार उत्पादन पर लागू गुणक। 1.00 = सामान्य।",
+
+  "factor.soilType":         "मिट्टी का प्रकार",
+  "factor.nutrients":        "NPK मिलान",
+  "factor.ph":               "मिट्टी pH",
+  "factor.rainfall":         "बारिश (7 दिन)",
+  "factor.temperature":      "गर्मी/ठंड",
+  "factor.mode":             "तरीके का असर",
+
+  "row.profit.best":         "सबसे अच्छा शुद्ध मुनाफा",
+  "row.profit.organic":      "शुद्ध — जैविक",
+  "row.profit.chemical":     "शुद्ध — रासायनिक",
+  "row.yield.chemical":      "उत्पादन — रासायनिक",
+  "row.yield.organic":       "उत्पादन — जैविक",
+  "row.price.now":           "आज का भाव",
+  "row.price.forecast":      "कटाई के समय भाव",
+  "row.soil.match":          "मिट्टी मिलान",
+  "row.weather.match":       "मौसम मिलान",
+  "row.demand":              "माँग",
+  "row.days":                "कटाई के दिन",
+  "row.confidence":          "विश्वास",
+  "row.harvest.month":       "कटाई का महीना",
+
+  "soil.detected":           "मिट्टी पता चली",
+  "soil.npk.n":              "नाइट्रोजन",
+  "soil.npk.p":              "फॉस्फोरस",
+  "soil.npk.k":              "पोटैशियम",
+  "soil.ph.label":           "pH",
+  "soil.fertility.low":      "कम",
+  "soil.fertility.medium":   "मध्यम",
+  "soil.fertility.high":     "ज़्यादा",
+
+  "mode.organic":            "जैविक",
+  "mode.chemical":           "रासायनिक",
+  "mode.best.organic":       "जैविक बेहतर",
+  "mode.best.chemical":      "रासायनिक बेहतर",
 };
 
 // Marathi
@@ -410,6 +519,55 @@ const mr: Dict = {
   "ui.share":              "शेअर",
   "ui.share.msg":          "तुमच्या शेतासाठी सर्वोत्तम पीक पहा — मोफत.",
   "ui.no.api":             "स्रोत मिळाला नाही. अंदाज दाखवत आहे.",
+
+  "advisor.auto.headline":   "फक्त ठिकाण व जमीन सांगा. बाकी आम्ही करू.",
+  "advisor.auto.sub":        "माती, हवामान आणि भाव स्वतः येतात.",
+  "advisor.auto.detect":     "माझं ठिकाण",
+  "advisor.auto.manual":     "किंवा राज्य व जिल्हा स्वतः निवडा",
+  "advisor.auto.size":       "किती एकर?",
+  "advisor.auto.acres.other": "इतर",
+  "advisor.auto.detected":   "आम्ही ओळखले",
+  "advisor.auto.computing":  "उत्तम पिकं शोधत आहोत…",
+
+  "compare.title":           "बाजूला-बाजूला तुलना",
+  "compare.metric":          "घटक",
+  "compare.winner":          "सर्वोत्तम",
+  "compare.factor.title":    "उत्पादन कशावर अवलंबून",
+
+  "factor.soilType":         "मातीचा प्रकार",
+  "factor.nutrients":        "NPK जुळणी",
+  "factor.ph":               "माती pH",
+  "factor.rainfall":         "पाऊस (7 दिवस)",
+  "factor.temperature":      "उष्णता/थंडी",
+  "factor.mode":             "पद्धतीचा परिणाम",
+
+  "row.profit.best":         "सर्वोत्तम निव्वळ नफा",
+  "row.profit.organic":      "निव्वळ — सेंद्रिय",
+  "row.profit.chemical":     "निव्वळ — रासायनिक",
+  "row.yield.chemical":      "उत्पन्न — रासायनिक",
+  "row.yield.organic":       "उत्पन्न — सेंद्रिय",
+  "row.price.now":           "आजचा भाव",
+  "row.price.forecast":      "काढणीच्या वेळी भाव",
+  "row.soil.match":          "माती जुळणी",
+  "row.weather.match":       "हवामान जुळणी",
+  "row.demand":              "मागणी",
+  "row.days":                "काढणीचे दिवस",
+  "row.confidence":          "विश्वास",
+  "row.harvest.month":       "काढणीचा महिना",
+
+  "soil.detected":           "माती ओळखली",
+  "soil.npk.n":              "नायट्रोजन",
+  "soil.npk.p":              "फॉस्फरस",
+  "soil.npk.k":              "पोटॅशियम",
+  "soil.ph.label":           "pH",
+  "soil.fertility.low":      "कमी",
+  "soil.fertility.medium":   "मध्यम",
+  "soil.fertility.high":     "जास्त",
+
+  "mode.organic":            "सेंद्रिय",
+  "mode.chemical":           "रासायनिक",
+  "mode.best.organic":       "सेंद्रिय जिंकले",
+  "mode.best.chemical":      "रासायनिक जिंकले",
 };
 
 // Tamil
@@ -534,6 +692,55 @@ const ta: Dict = {
   "ui.share":              "பகிர்",
   "ui.share.msg":          "உங்கள் பண்ணைக்கு சிறந்த பயிரைக் காண்க — இலவசம்.",
   "ui.no.api":             "தரவு கிடைக்கவில்லை. மதிப்பீடு காட்டப்படுகிறது.",
+
+  "advisor.auto.headline":   "எங்கே, எவ்வளவு என்று சொல்லுங்கள். மற்றதை நாங்கள் செய்கிறோம்.",
+  "advisor.auto.sub":        "மண், வானிலை, விலை தானாக வரும்.",
+  "advisor.auto.detect":     "எனது இடம்",
+  "advisor.auto.manual":     "அல்லது மாநிலம்/மாவட்டத்தைத் தேர்வுசெய்யுங்கள்",
+  "advisor.auto.size":       "எத்தனை ஏக்கர்?",
+  "advisor.auto.acres.other": "மற்றவை",
+  "advisor.auto.detected":   "நாம் கண்டறிந்தது",
+  "advisor.auto.computing":  "சிறந்த பயிர்கள் கணக்கிடப்படுகின்றன…",
+
+  "compare.title":           "பக்கம் பக்கமாக ஒப்பீடு",
+  "compare.metric":          "காரணி",
+  "compare.winner":          "சிறந்தது",
+  "compare.factor.title":    "விளைச்சல் எதனால் தீர்மானிக்கப்படுகிறது",
+
+  "factor.soilType":         "மண் வகை",
+  "factor.nutrients":        "NPK பொருத்தம்",
+  "factor.ph":               "மண் pH",
+  "factor.rainfall":         "மழை (7 நாள்)",
+  "factor.temperature":      "வெப்பம்/குளிர்",
+  "factor.mode":             "முறையின் தாக்கம்",
+
+  "row.profit.best":         "சிறந்த நிகர லாபம்",
+  "row.profit.organic":      "நிகர — இயற்கை",
+  "row.profit.chemical":     "நிகர — ரசாயன",
+  "row.yield.chemical":      "விளைச்சல் — ரசாயன",
+  "row.yield.organic":       "விளைச்சல் — இயற்கை",
+  "row.price.now":           "இன்றைய விலை",
+  "row.price.forecast":      "அறுவடை நேர விலை",
+  "row.soil.match":          "மண் பொருத்தம்",
+  "row.weather.match":       "வானிலை பொருத்தம்",
+  "row.demand":              "தேவை",
+  "row.days":                "அறுவடை நாட்கள்",
+  "row.confidence":          "நம்பகத்தன்மை",
+  "row.harvest.month":       "அறுவடை மாதம்",
+
+  "soil.detected":           "மண் கண்டறியப்பட்டது",
+  "soil.npk.n":              "நைட்ரஜன்",
+  "soil.npk.p":              "பாஸ்பரஸ்",
+  "soil.npk.k":              "பொட்டாசியம்",
+  "soil.ph.label":           "pH",
+  "soil.fertility.low":      "குறைவு",
+  "soil.fertility.medium":   "நடுத்தர",
+  "soil.fertility.high":     "அதிகம்",
+
+  "mode.organic":            "இயற்கை",
+  "mode.chemical":           "ரசாயன",
+  "mode.best.organic":       "இயற்கை சிறந்தது",
+  "mode.best.chemical":      "ரசாயன சிறந்தது",
 };
 
 const DICT: Record<Locale, Dict> = { en, hi, mr, ta };
