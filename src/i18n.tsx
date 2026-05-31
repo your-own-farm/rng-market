@@ -1,0 +1,612 @@
+// ── i18n ──────────────────────────────────────────────────────────────────────
+// Tiny i18n layer. No runtime deps — translations live in a single object and
+// the active locale is read from / persisted to localStorage. Designed so new
+// strings/locales can be added without touching call sites.
+
+import React from "react";
+
+export type Locale = "en" | "hi" | "mr" | "ta";
+
+export const LOCALES: Array<{ code: Locale; native: string; english: string; flag: string }> = [
+  { code: "en", native: "English",  english: "English", flag: "🇬🇧" },
+  { code: "hi", native: "हिन्दी",    english: "Hindi",   flag: "🇮🇳" },
+  { code: "mr", native: "मराठी",    english: "Marathi", flag: "🇮🇳" },
+  { code: "ta", native: "தமிழ்",    english: "Tamil",   flag: "🇮🇳" },
+];
+
+// Translation dictionary. Keys are dotted paths; English is the source of truth
+// (used as fallback when a translation is missing).
+type Dict = Record<string, string>;
+
+const en: Dict = {
+  // Brand
+  "brand.title":           "Kinsar Intelligence",
+  "brand.tagline":         "Decide before you plant.",
+
+  // Tabs
+  "tab.advisor":           "Crop Advisor",
+  "tab.weather":           "Weather",
+  "tab.prices":            "Mandi Prices",
+  "tab.calculator":        "Profit Calculator",
+  "tab.knowledge":         "Help & Schemes",
+
+  // Advisor flow
+  "advisor.headline":      "Which crop will earn you the most this season?",
+  "advisor.sub":           "Free. No login. Works offline. Available in your language.",
+  "advisor.step.where":    "Where is your farm?",
+  "advisor.step.size":     "How big is your land?",
+  "advisor.step.soil":     "What is your soil like?",
+  "advisor.step.season":   "Which season are you planning for?",
+  "advisor.use.location":  "Use my location",
+  "advisor.locating":      "Finding your location…",
+  "advisor.state":         "State",
+  "advisor.district":      "District",
+  "advisor.acres":         "Acres",
+  "advisor.acres.help":    "1 acre ≈ 0.4 hectares ≈ 40 guntha",
+  "advisor.soil.auto":     "We'll detect from your location",
+  "advisor.soil.manual":   "Or pick it yourself",
+  "advisor.see.results":   "See recommendations",
+  "advisor.results.title": "Top crops for you",
+  "advisor.results.sub":   "Ranked by expected net profit per acre. Verify with local experts.",
+  "advisor.no.results":    "We need more inputs to recommend a crop.",
+  "advisor.try.again":     "Change inputs",
+  "advisor.why":           "Why this crop?",
+  "advisor.confidence":    "Confidence",
+  "advisor.read.aloud":    "🔊 Read aloud",
+  "advisor.stop.reading":  "⏸ Stop",
+
+  // Crop card
+  "card.yield":            "Expected yield",
+  "card.price":            "Mandi price",
+  "card.revenue":          "Gross revenue",
+  "card.cost":             "Input cost",
+  "card.profit":           "Net profit",
+  "card.weatherRisk":      "Weather risk",
+  "card.demand":           "Demand",
+  "card.days":             "Days to harvest",
+  "card.unit.qtl":         "qtl/acre",
+  "card.unit.qtl.short":   "₹/qtl",
+  "card.per.acre":         "per acre",
+
+  // Seasons
+  "season.kharif":         "Kharif (Jun–Oct)",
+  "season.rabi":           "Rabi (Oct–Mar)",
+  "season.zaid":           "Zaid (Mar–Jun)",
+  "season.auto":           "This season",
+
+  // Soils
+  "soil.alluvial":         "Alluvial",
+  "soil.black":            "Black (Cotton)",
+  "soil.red":              "Red",
+  "soil.laterite":         "Laterite",
+  "soil.sandy":            "Sandy",
+  "soil.loamy":            "Loamy",
+  "soil.clay":             "Clay",
+  "soil.unknown":          "Not sure",
+
+  // Risk
+  "risk.low":              "Low risk",
+  "risk.medium":           "Medium risk",
+  "risk.high":             "High risk",
+  "demand.rising":         "Rising",
+  "demand.stable":         "Stable",
+  "demand.falling":        "Falling",
+
+  // Weather page
+  "weather.title":         "7-Day Forecast",
+  "weather.sub":           "From Open-Meteo. Updated hourly.",
+  "weather.no.location":   "Pick your district to see the forecast.",
+  "weather.loading":       "Fetching weather…",
+  "weather.rain.7d":       "Rain (next 7 days)",
+  "weather.temp.range":    "Temperature range",
+  "weather.sowing.window": "Sowing window",
+  "weather.sowing.good":   "Conditions look good for sowing.",
+  "weather.sowing.wait":   "Wait — soil moisture / heat not yet ideal.",
+  "weather.sowing.warning": "Extreme weather expected — delay sowing.",
+  "weather.hot":           "Heat alert",
+  "weather.cold":          "Cold / frost alert",
+  "weather.heavy":         "Heavy rain alert",
+
+  // Prices page
+  "prices.title":          "Live Mandi Prices",
+  "prices.sub":            "Streamed from APMC markets via data.gov.in",
+  "prices.search":         "Search crop or district…",
+  "prices.all.states":     "All States",
+  "prices.all.signals":    "All Signals",
+  "prices.sort.move":      "Biggest move",
+  "prices.sort.price":     "Highest price",
+  "prices.sort.recent":    "Most recent",
+  "prices.empty":          "No crops match your filters.",
+  "prices.signal.sellnow": "Sell Now",
+  "prices.signal.hold":    "Hold",
+  "prices.signal.watch":   "Watch",
+  "prices.live":           "LIVE",
+  "prices.demo":           "DEMO · Simulated",
+
+  // Calculator
+  "calc.title":            "Profit Calculator",
+  "calc.sub":              "Estimate your earnings before you plant.",
+  "calc.crop":             "Crop",
+  "calc.acres":            "Land (acres)",
+  "calc.mode":             "Farming mode",
+  "calc.mode.organic":     "Organic",
+  "calc.mode.urea":        "Chemical (urea)",
+  "calc.yield":            "Yield per acre (qtl)",
+  "calc.price":            "Sale price (₹/qtl)",
+  "calc.cost":             "Input cost per acre (₹)",
+  "calc.breakdown":        "Breakdown",
+  "calc.total.revenue":    "Total revenue",
+  "calc.total.cost":       "Total cost",
+  "calc.net.profit":       "Net profit",
+  "calc.per.acre.net":     "Net per acre",
+  "calc.loss":             "Estimated loss",
+
+  // Knowledge / Help
+  "kb.title":              "Help, Schemes & Helplines",
+  "kb.sub":                "Open-data resources every farmer should know.",
+  "kb.schemes":            "Government schemes",
+  "kb.helplines":          "Helplines",
+  "kb.pests":              "Common pests by crop",
+  "kb.disclaimer":         "All info from public government sources. Verify before acting.",
+
+  // Generic
+  "ui.back":               "Back",
+  "ui.next":               "Next",
+  "ui.continue":           "Continue",
+  "ui.optional":           "optional",
+  "ui.unknown":            "Unknown",
+  "ui.detected":           "Detected",
+  "ui.beta":               "Beta",
+  "ui.offline":            "Offline",
+  "ui.connected":          "Online",
+  "ui.share":              "Share",
+  "ui.share.msg":          "Check the best crop for your farm — free, no login.",
+  "ui.no.api":             "Couldn't reach the data source. Showing offline estimate.",
+};
+
+// Hindi (Devanagari)
+const hi: Dict = {
+  "brand.title":           "किंसर इंटेलिजेंस",
+  "brand.tagline":         "बोने से पहले तय करें।",
+  "tab.advisor":           "फसल सलाह",
+  "tab.weather":           "मौसम",
+  "tab.prices":            "मंडी भाव",
+  "tab.calculator":        "मुनाफा कैलकुलेटर",
+  "tab.knowledge":         "मदद और योजनाएँ",
+  "advisor.headline":      "इस मौसम कौन सी फसल सबसे ज़्यादा कमाई देगी?",
+  "advisor.sub":           "मुफ़्त। बिना लॉगिन। 2G पर भी चले। आपकी भाषा में।",
+  "advisor.step.where":    "आपका खेत कहाँ है?",
+  "advisor.step.size":     "ज़मीन कितनी है?",
+  "advisor.step.soil":     "मिट्टी कैसी है?",
+  "advisor.step.season":   "किस मौसम के लिए योजना?",
+  "advisor.use.location":  "मेरा स्थान लें",
+  "advisor.locating":      "स्थान खोजा जा रहा है…",
+  "advisor.state":         "राज्य",
+  "advisor.district":      "ज़िला",
+  "advisor.acres":         "एकड़",
+  "advisor.acres.help":    "1 एकड़ ≈ 0.4 हेक्टेयर ≈ 40 गुंठा",
+  "advisor.soil.auto":     "हम आपके स्थान से पता लगाएँगे",
+  "advisor.soil.manual":   "या खुद चुनें",
+  "advisor.see.results":   "सिफारिशें देखें",
+  "advisor.results.title": "आपके लिए सबसे अच्छी फसलें",
+  "advisor.results.sub":   "प्रति एकड़ अनुमानित मुनाफ़े के अनुसार। स्थानीय विशेषज्ञ से जाँचें।",
+  "advisor.no.results":    "सिफारिश के लिए और जानकारी चाहिए।",
+  "advisor.try.again":     "इनपुट बदलें",
+  "advisor.why":           "यह फसल क्यों?",
+  "advisor.confidence":    "विश्वास",
+  "advisor.read.aloud":    "🔊 सुनें",
+  "advisor.stop.reading":  "⏸ रुकें",
+  "card.yield":            "अनुमानित उत्पादन",
+  "card.price":            "मंडी भाव",
+  "card.revenue":          "कुल आमदनी",
+  "card.cost":             "लागत",
+  "card.profit":           "शुद्ध मुनाफ़ा",
+  "card.weatherRisk":      "मौसम जोखिम",
+  "card.demand":           "माँग",
+  "card.days":             "कटाई में दिन",
+  "card.unit.qtl":         "क्विं/एकड़",
+  "card.unit.qtl.short":   "₹/क्विं",
+  "card.per.acre":         "प्रति एकड़",
+  "season.kharif":         "खरीफ (जून–अक्टूबर)",
+  "season.rabi":           "रबी (अक्टूबर–मार्च)",
+  "season.zaid":           "ज़ायद (मार्च–जून)",
+  "season.auto":           "इस मौसम",
+  "soil.alluvial":         "जलोढ़",
+  "soil.black":            "काली (कपास)",
+  "soil.red":              "लाल",
+  "soil.laterite":         "लेटराइट",
+  "soil.sandy":            "रेतीली",
+  "soil.loamy":            "दोमट",
+  "soil.clay":             "चिकनी",
+  "soil.unknown":          "पता नहीं",
+  "risk.low":              "कम जोखिम",
+  "risk.medium":           "मध्यम जोखिम",
+  "risk.high":             "ज़्यादा जोखिम",
+  "demand.rising":         "बढ़ रही",
+  "demand.stable":         "स्थिर",
+  "demand.falling":        "घट रही",
+  "weather.title":         "7 दिन का पूर्वानुमान",
+  "weather.sub":           "Open-Meteo से। हर घंटे अपडेट।",
+  "weather.no.location":   "पूर्वानुमान देखने के लिए ज़िला चुनें।",
+  "weather.loading":       "मौसम लोड हो रहा है…",
+  "weather.rain.7d":       "बारिश (अगले 7 दिन)",
+  "weather.temp.range":    "तापमान सीमा",
+  "weather.sowing.window": "बोने का समय",
+  "weather.sowing.good":   "बोने के लिए अच्छी स्थिति है।",
+  "weather.sowing.wait":   "रुकें — नमी / गर्मी अभी सही नहीं।",
+  "weather.sowing.warning": "कठोर मौसम — बोना टालें।",
+  "weather.hot":           "लू की चेतावनी",
+  "weather.cold":          "ठंड / पाला",
+  "weather.heavy":         "भारी बारिश",
+  "prices.title":          "लाइव मंडी भाव",
+  "prices.sub":            "data.gov.in के ज़रिए APMC मंडियों से।",
+  "prices.search":         "फसल या ज़िला खोजें…",
+  "prices.all.states":     "सभी राज्य",
+  "prices.all.signals":    "सभी संकेत",
+  "prices.sort.move":      "सबसे बड़ा बदलाव",
+  "prices.sort.price":     "सबसे ऊँचा भाव",
+  "prices.sort.recent":    "हाल का",
+  "prices.empty":          "कोई फसल नहीं मिली।",
+  "prices.signal.sellnow": "अभी बेचें",
+  "prices.signal.hold":    "रोकें",
+  "prices.signal.watch":   "देखें",
+  "prices.live":           "लाइव",
+  "prices.demo":           "डेमो",
+  "calc.title":            "मुनाफा कैलकुलेटर",
+  "calc.sub":              "बोने से पहले अपनी आमदनी का अनुमान।",
+  "calc.crop":             "फसल",
+  "calc.acres":            "ज़मीन (एकड़)",
+  "calc.mode":             "खेती का तरीका",
+  "calc.mode.organic":     "जैविक",
+  "calc.mode.urea":        "रासायनिक (यूरिया)",
+  "calc.yield":            "प्रति एकड़ उत्पादन (क्विं)",
+  "calc.price":            "बिक्री भाव (₹/क्विं)",
+  "calc.cost":             "प्रति एकड़ लागत (₹)",
+  "calc.breakdown":        "विवरण",
+  "calc.total.revenue":    "कुल आमदनी",
+  "calc.total.cost":       "कुल लागत",
+  "calc.net.profit":       "शुद्ध मुनाफ़ा",
+  "calc.per.acre.net":     "प्रति एकड़ शुद्ध",
+  "calc.loss":             "संभावित नुकसान",
+  "kb.title":              "मदद, योजनाएँ और हेल्पलाइन",
+  "kb.sub":                "हर किसान को पता होने चाहिए ये संसाधन।",
+  "kb.schemes":            "सरकारी योजनाएँ",
+  "kb.helplines":          "हेल्पलाइन",
+  "kb.pests":              "फसल के अनुसार आम कीट",
+  "kb.disclaimer":         "सारी जानकारी सरकारी स्रोतों से। पुष्टि अवश्य करें।",
+  "ui.back":               "वापस",
+  "ui.next":               "आगे",
+  "ui.continue":           "जारी रखें",
+  "ui.optional":           "वैकल्पिक",
+  "ui.unknown":            "अज्ञात",
+  "ui.detected":           "पता चला",
+  "ui.beta":               "बीटा",
+  "ui.offline":            "ऑफ़लाइन",
+  "ui.connected":          "ऑनलाइन",
+  "ui.share":              "शेयर",
+  "ui.share.msg":          "अपने खेत के लिए सबसे अच्छी फसल देखें — मुफ़्त, बिना लॉगिन।",
+  "ui.no.api":             "डेटा स्रोत नहीं मिला। अनुमान दिखाया जा रहा है।",
+};
+
+// Marathi
+const mr: Dict = {
+  "brand.title":           "किंसर इंटेलिजन्स",
+  "brand.tagline":         "पेरण्याआधी ठरवा.",
+  "tab.advisor":           "पीक सल्ला",
+  "tab.weather":           "हवामान",
+  "tab.prices":            "बाजार भाव",
+  "tab.calculator":        "नफा कॅल्क्युलेटर",
+  "tab.knowledge":         "मदत व योजना",
+  "advisor.headline":      "या हंगामात कोणतं पीक जास्त कमावेल?",
+  "advisor.sub":           "मोफत. लॉगिन नाही. 2G वर चालतं. तुमच्या भाषेत.",
+  "advisor.step.where":    "तुमचं शेत कुठे आहे?",
+  "advisor.step.size":     "जमीन किती आहे?",
+  "advisor.step.soil":     "माती कशी आहे?",
+  "advisor.step.season":   "कोणत्या हंगामासाठी?",
+  "advisor.use.location":  "माझं ठिकाण घ्या",
+  "advisor.locating":      "ठिकाण शोधत आहे…",
+  "advisor.state":         "राज्य",
+  "advisor.district":      "जिल्हा",
+  "advisor.acres":         "एकर",
+  "advisor.acres.help":    "1 एकर ≈ 0.4 हेक्टर ≈ 40 गुंठा",
+  "advisor.soil.auto":     "ठिकाणावरून शोधू",
+  "advisor.soil.manual":   "किंवा स्वतः निवडा",
+  "advisor.see.results":   "शिफारस पहा",
+  "advisor.results.title": "तुमच्यासाठी उत्तम पिकं",
+  "advisor.results.sub":   "अंदाजे नफ्यानुसार क्रम. स्थानिक तज्ज्ञाकडून तपासा.",
+  "advisor.no.results":    "शिफारशीसाठी अधिक माहिती हवी.",
+  "advisor.try.again":     "इनपुट बदला",
+  "advisor.why":           "हे पीक का?",
+  "advisor.confidence":    "विश्वास",
+  "advisor.read.aloud":    "🔊 ऐका",
+  "advisor.stop.reading":  "⏸ थांबवा",
+  "card.yield":            "अंदाजे उत्पन्न",
+  "card.price":            "बाजार भाव",
+  "card.revenue":          "एकूण उत्पन्न",
+  "card.cost":             "खर्च",
+  "card.profit":           "निव्वळ नफा",
+  "card.weatherRisk":      "हवामान जोखीम",
+  "card.demand":           "मागणी",
+  "card.days":             "काढणीचे दिवस",
+  "card.unit.qtl":         "क्विं/एकर",
+  "card.unit.qtl.short":   "₹/क्विं",
+  "card.per.acre":         "प्रति एकर",
+  "season.kharif":         "खरीप (जून–ऑक्टो)",
+  "season.rabi":           "रब्बी (ऑक्टो–मार्च)",
+  "season.zaid":           "उन्हाळी (मार्च–जून)",
+  "season.auto":           "या हंगामात",
+  "soil.alluvial":         "गाळाची",
+  "soil.black":            "काळी",
+  "soil.red":              "तांबडी",
+  "soil.laterite":         "जांभी",
+  "soil.sandy":            "वालुकामय",
+  "soil.loamy":            "दोमट",
+  "soil.clay":             "चिकणमाती",
+  "soil.unknown":          "माहीत नाही",
+  "risk.low":              "कमी जोखीम",
+  "risk.medium":           "मध्यम",
+  "risk.high":             "जास्त जोखीम",
+  "demand.rising":         "वाढतेय",
+  "demand.stable":         "स्थिर",
+  "demand.falling":        "घटतेय",
+  "weather.title":         "7-दिवसांचा अंदाज",
+  "weather.sub":           "Open-Meteo कडून. दर तासाला अद्ययावत.",
+  "weather.no.location":   "अंदाजासाठी जिल्हा निवडा.",
+  "weather.loading":       "हवामान लोड होतंय…",
+  "weather.rain.7d":       "पाऊस (पुढील 7 दिवस)",
+  "weather.temp.range":    "तापमान",
+  "weather.sowing.window": "पेरणीचा काळ",
+  "weather.sowing.good":   "पेरणीसाठी चांगली स्थिती.",
+  "weather.sowing.wait":   "थांबा — ओलावा / उष्णता योग्य नाही.",
+  "weather.sowing.warning": "तीव्र हवामान — पेरणी लांबवा.",
+  "weather.hot":           "उष्णतेची लाट",
+  "weather.cold":          "थंडी / दव",
+  "weather.heavy":         "जोरदार पाऊस",
+  "prices.title":          "थेट बाजार भाव",
+  "prices.sub":            "data.gov.in द्वारे APMC मंडईंमधून.",
+  "prices.search":         "पीक किंवा जिल्हा शोधा…",
+  "prices.all.states":     "सर्व राज्ये",
+  "prices.all.signals":    "सर्व संकेत",
+  "prices.sort.move":      "मोठा बदल",
+  "prices.sort.price":     "जास्त भाव",
+  "prices.sort.recent":    "अलीकडील",
+  "prices.empty":          "कोणतेही पीक सापडले नाही.",
+  "prices.signal.sellnow": "आता विका",
+  "prices.signal.hold":    "थांबा",
+  "prices.signal.watch":   "लक्ष द्या",
+  "prices.live":           "थेट",
+  "prices.demo":           "डेमो",
+  "calc.title":            "नफा कॅल्क्युलेटर",
+  "calc.sub":              "पेरणीआधी कमाईचा अंदाज.",
+  "calc.crop":             "पीक",
+  "calc.acres":            "जमीन (एकर)",
+  "calc.mode":             "शेती पद्धत",
+  "calc.mode.organic":     "सेंद्रिय",
+  "calc.mode.urea":        "रासायनिक",
+  "calc.yield":            "प्रति एकर उत्पन्न (क्विं)",
+  "calc.price":            "विक्री भाव (₹/क्विं)",
+  "calc.cost":             "प्रति एकर खर्च (₹)",
+  "calc.breakdown":        "तपशील",
+  "calc.total.revenue":    "एकूण उत्पन्न",
+  "calc.total.cost":       "एकूण खर्च",
+  "calc.net.profit":       "निव्वळ नफा",
+  "calc.per.acre.net":     "प्रति एकर नफा",
+  "calc.loss":             "संभाव्य तोटा",
+  "kb.title":              "मदत, योजना व हेल्पलाइन",
+  "kb.sub":                "प्रत्येक शेतकऱ्याला माहीत हवीत.",
+  "kb.schemes":            "सरकारी योजना",
+  "kb.helplines":          "हेल्पलाइन",
+  "kb.pests":              "पिकानुसार किडी",
+  "kb.disclaimer":         "सर्व माहिती सरकारी स्रोतांकडून. खात्री करा.",
+  "ui.back":               "मागे",
+  "ui.next":               "पुढे",
+  "ui.continue":           "सुरू ठेवा",
+  "ui.optional":           "ऐच्छिक",
+  "ui.unknown":            "अज्ञात",
+  "ui.detected":           "ओळखले",
+  "ui.beta":               "बीटा",
+  "ui.offline":            "ऑफलाइन",
+  "ui.connected":          "ऑनलाइन",
+  "ui.share":              "शेअर",
+  "ui.share.msg":          "तुमच्या शेतासाठी सर्वोत्तम पीक पहा — मोफत.",
+  "ui.no.api":             "स्रोत मिळाला नाही. अंदाज दाखवत आहे.",
+};
+
+// Tamil
+const ta: Dict = {
+  "brand.title":           "கின்சார் இன்டெலிஜென்ஸ்",
+  "brand.tagline":         "விதைப்பதற்கு முன் முடிவெடுங்கள்.",
+  "tab.advisor":           "பயிர் ஆலோசனை",
+  "tab.weather":           "வானிலை",
+  "tab.prices":            "சந்தை விலை",
+  "tab.calculator":        "லாப கணிப்பான்",
+  "tab.knowledge":         "உதவி & திட்டங்கள்",
+  "advisor.headline":      "இந்த பருவத்தில் எந்த பயிர் அதிக வருமானம் தரும்?",
+  "advisor.sub":           "இலவசம். உள்நுழைவு இல்லை. 2G-இல் வேலை செய்யும்.",
+  "advisor.step.where":    "உங்கள் பண்ணை எங்கே?",
+  "advisor.step.size":     "நிலம் எவ்வளவு?",
+  "advisor.step.soil":     "மண் எப்படி இருக்கிறது?",
+  "advisor.step.season":   "எந்த பருவத்திற்கு?",
+  "advisor.use.location":  "எனது இடம்",
+  "advisor.locating":      "இடம் தேடப்படுகிறது…",
+  "advisor.state":         "மாநிலம்",
+  "advisor.district":      "மாவட்டம்",
+  "advisor.acres":         "ஏக்கர்",
+  "advisor.acres.help":    "1 ஏக்கர் ≈ 0.4 ஹெக்டேர்",
+  "advisor.soil.auto":     "இடத்திலிருந்து கண்டறிவோம்",
+  "advisor.soil.manual":   "அல்லது நீங்களே தேர்வுசெய்க",
+  "advisor.see.results":   "பரிந்துரைகளைப் பார்க்க",
+  "advisor.results.title": "உங்களுக்கான சிறந்த பயிர்கள்",
+  "advisor.results.sub":   "எதிர்பார்க்கப்படும் லாபத்தின் வரிசையில்.",
+  "advisor.no.results":    "மேலும் தகவல் தேவை.",
+  "advisor.try.again":     "மாற்றவும்",
+  "advisor.why":           "ஏன் இந்த பயிர்?",
+  "advisor.confidence":    "நம்பகத்தன்மை",
+  "advisor.read.aloud":    "🔊 கேட்க",
+  "advisor.stop.reading":  "⏸ நிறுத்து",
+  "card.yield":            "எதிர்பார்க்கப்படும் விளைச்சல்",
+  "card.price":            "சந்தை விலை",
+  "card.revenue":          "மொத்த வருமானம்",
+  "card.cost":             "செலவு",
+  "card.profit":           "நிகர லாபம்",
+  "card.weatherRisk":      "வானிலை ஆபத்து",
+  "card.demand":           "தேவை",
+  "card.days":             "அறுவடை நாட்கள்",
+  "card.unit.qtl":         "குவி/ஏக்கர்",
+  "card.unit.qtl.short":   "₹/குவி",
+  "card.per.acre":         "ஒரு ஏக்கருக்கு",
+  "season.kharif":         "காரிஃப் (ஜூன்–அக்டோ)",
+  "season.rabi":           "ரபி (அக்டோ–மார்ச்)",
+  "season.zaid":           "சைத் (மார்ச்–ஜூன்)",
+  "season.auto":           "இந்த பருவத்தில்",
+  "soil.alluvial":         "வண்டல்",
+  "soil.black":            "கருப்பு",
+  "soil.red":              "சிவப்பு",
+  "soil.laterite":         "லாட்டரைட்",
+  "soil.sandy":            "மணல்",
+  "soil.loamy":            "களி-மணல்",
+  "soil.clay":             "களிமண்",
+  "soil.unknown":          "தெரியாது",
+  "risk.low":              "குறைந்த ஆபத்து",
+  "risk.medium":           "நடுத்தர ஆபத்து",
+  "risk.high":             "அதிக ஆபத்து",
+  "demand.rising":         "உயர்கிறது",
+  "demand.stable":         "நிலையாக",
+  "demand.falling":        "குறைகிறது",
+  "weather.title":         "7-நாள் முன்னறிவிப்பு",
+  "weather.sub":           "Open-Meteo. ஒவ்வொரு மணிநேரமும் புதுப்பிக்கப்படுகிறது.",
+  "weather.no.location":   "முன்னறிவிப்புக்கு மாவட்டத்தைத் தேர்வுசெய்க.",
+  "weather.loading":       "வானிலை ஏற்றப்படுகிறது…",
+  "weather.rain.7d":       "மழை (அடுத்த 7 நாட்கள்)",
+  "weather.temp.range":    "வெப்பநிலை",
+  "weather.sowing.window": "விதைப்பு காலம்",
+  "weather.sowing.good":   "விதைப்புக்கு நல்ல நிலை.",
+  "weather.sowing.wait":   "காத்திருங்கள் — ஈரப்பதம் சரியில்லை.",
+  "weather.sowing.warning": "கடுமையான வானிலை — தாமதப்படுத்துங்கள்.",
+  "weather.hot":           "வெப்ப எச்சரிக்கை",
+  "weather.cold":          "குளிர் / பனி",
+  "weather.heavy":         "கனமழை",
+  "prices.title":          "நேரடி சந்தை விலை",
+  "prices.sub":            "data.gov.in வழியாக APMC சந்தைகளிலிருந்து.",
+  "prices.search":         "பயிர் அல்லது மாவட்டத்தைத் தேடு…",
+  "prices.all.states":     "அனைத்து மாநிலங்கள்",
+  "prices.all.signals":    "அனைத்து சமிக்ஞைகள்",
+  "prices.sort.move":      "பெரிய மாற்றம்",
+  "prices.sort.price":     "உயர் விலை",
+  "prices.sort.recent":    "சமீபத்திய",
+  "prices.empty":          "பயிர்கள் இல்லை.",
+  "prices.signal.sellnow": "இப்போது விற்க",
+  "prices.signal.hold":    "காத்திருக்கவும்",
+  "prices.signal.watch":   "கவனிக்கவும்",
+  "prices.live":           "நேரடி",
+  "prices.demo":           "டெமோ",
+  "calc.title":            "லாப கணிப்பான்",
+  "calc.sub":              "விதைப்பதற்கு முன் வருவாயை மதிப்பிடுங்கள்.",
+  "calc.crop":             "பயிர்",
+  "calc.acres":            "நிலம் (ஏக்கர்)",
+  "calc.mode":             "முறை",
+  "calc.mode.organic":     "இயற்கை",
+  "calc.mode.urea":        "ரசாயன",
+  "calc.yield":            "ஒரு ஏக்கருக்கு விளைச்சல்",
+  "calc.price":            "விற்பனை விலை",
+  "calc.cost":             "ஒரு ஏக்கர் செலவு",
+  "calc.breakdown":        "விவரம்",
+  "calc.total.revenue":    "மொத்த வருமானம்",
+  "calc.total.cost":       "மொத்த செலவு",
+  "calc.net.profit":       "நிகர லாபம்",
+  "calc.per.acre.net":     "ஒரு ஏக்கருக்கு நிகர",
+  "calc.loss":             "மதிப்பிடப்பட்ட இழப்பு",
+  "kb.title":              "உதவி, திட்டங்கள் & ஹெல்ப்லைன்",
+  "kb.sub":                "ஒவ்வொரு விவசாயியும் அறிய வேண்டியவை.",
+  "kb.schemes":            "அரசுத் திட்டங்கள்",
+  "kb.helplines":          "ஹெல்ப்லைன்",
+  "kb.pests":              "பயிரின் பொதுவான பூச்சிகள்",
+  "kb.disclaimer":         "அனைத்து தகவல்களும் பொது அரசு ஆதாரங்களிலிருந்து.",
+  "ui.back":               "பின்",
+  "ui.next":               "அடுத்து",
+  "ui.continue":           "தொடர",
+  "ui.optional":           "விருப்ப",
+  "ui.unknown":            "தெரியாது",
+  "ui.detected":           "கண்டறியப்பட்டது",
+  "ui.beta":               "பீட்டா",
+  "ui.offline":            "ஆஃப்லைன்",
+  "ui.connected":          "ஆன்லைன்",
+  "ui.share":              "பகிர்",
+  "ui.share.msg":          "உங்கள் பண்ணைக்கு சிறந்த பயிரைக் காண்க — இலவசம்.",
+  "ui.no.api":             "தரவு கிடைக்கவில்லை. மதிப்பீடு காட்டப்படுகிறது.",
+};
+
+const DICT: Record<Locale, Dict> = { en, hi, mr, ta };
+
+const STORAGE_KEY = "kinsar.locale";
+
+export function getStoredLocale(): Locale {
+  if (typeof window === "undefined") return "en";
+  const stored = window.localStorage.getItem(STORAGE_KEY) as Locale | null;
+  if (stored && DICT[stored]) return stored;
+  // Try to match browser language
+  const nav = window.navigator?.language?.slice(0, 2);
+  if (nav === "hi" || nav === "mr" || nav === "ta") return nav;
+  return "en";
+}
+
+export function setStoredLocale(loc: Locale) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEY, loc);
+}
+
+// BCP47 tag used by Web Speech / Intl APIs
+export const BCP47: Record<Locale, string> = {
+  en: "en-IN",
+  hi: "hi-IN",
+  mr: "mr-IN",
+  ta: "ta-IN",
+};
+
+// ── React context ─────────────────────────────────────────────────────────────
+interface I18nContextType {
+  locale: Locale;
+  setLocale: (l: Locale) => void;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}
+
+const I18nContext = React.createContext<I18nContextType | null>(null);
+
+function interpolate(s: string, vars?: Record<string, string | number>) {
+  if (!vars) return s;
+  return s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
+}
+
+export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [locale, setLocaleState] = React.useState<Locale>(() => getStoredLocale());
+
+  const setLocale = React.useCallback((l: Locale) => {
+    setLocaleState(l);
+    setStoredLocale(l);
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = l;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof document !== "undefined") document.documentElement.lang = locale;
+  }, [locale]);
+
+  const t = React.useCallback(
+    (key: string, vars?: Record<string, string | number>) => {
+      const s = DICT[locale][key] ?? DICT.en[key] ?? key;
+      return interpolate(s, vars);
+    },
+    [locale]
+  );
+
+  return (
+    <I18nContext.Provider value={{ locale, setLocale, t }}>{children}</I18nContext.Provider>
+  );
+};
+
+export function useI18n(): I18nContextType {
+  const ctx = React.useContext(I18nContext);
+  if (!ctx) throw new Error("useI18n must be used inside <I18nProvider>");
+  return ctx;
+}
