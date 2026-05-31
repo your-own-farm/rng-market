@@ -12,12 +12,37 @@ import {
 } from "../ui";
 import { PriceSource } from "../usePrices";
 
-interface Props { prices: CropPriceVM[]; live: boolean; source?: PriceSource }
+interface Props {
+  prices:     CropPriceVM[];
+  live:       boolean;
+  source?:    PriceSource;
+  lastSyncAt?: number | null;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+}
+
+function ageString(ms: number): string {
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60)    return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60)    return `${min} min ago`;
+  const hr  = Math.floor(min / 60);
+  if (hr  < 24)    return `${hr} h ago`;
+  return `${Math.floor(hr / 24)} d ago`;
+}
+
+function nextRefreshIn(lastSyncAt: number): string {
+  const elapsed = Date.now() - lastSyncAt;
+  const left    = 30 * 60 * 1000 - elapsed;
+  if (left <= 0) return "any moment now";
+  const min = Math.ceil(left / 60000);
+  return `~${min} min`;
+}
 
 const trendColor: Record<Trend, string> = { up: GREEN, down: RED, stable: AMBER };
 const trendArrow: Record<Trend, string> = { up: "↑", down: "↓", stable: "→" };
 
-const Prices: React.FC<Props> = ({ prices, live, source }) => {
+const Prices: React.FC<Props> = ({ prices, live, source, lastSyncAt, refreshing, onRefresh }) => {
   const { t } = useI18n();
   const [stateFilter, setStateFilter] = React.useState("all");
   const [adviceFilter, setAdviceFilter] = React.useState<"all" | SellAdvice>("all");
@@ -63,20 +88,52 @@ const Prices: React.FC<Props> = ({ prices, live, source }) => {
     <div>
       <SectionTitle title={`💰 ${t("prices.title")}`} sub={t("prices.sub")} />
 
-      {/* Source attribution */}
+      {/* Source attribution + freshness + manual refresh */}
       {source && (
-        <div style={{ marginBottom: "1rem", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{
+          marginBottom: "1rem",
+          padding: "0.75rem 1rem",
+          background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12,
+          display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center",
+        }}>
           <Pill color={source === "demo" ? AMBER : GREEN}>
-            {source === "firebase"    ? "Firebase RTDB · live"
+            {source === "firebase"      ? "Firebase RTDB · synced"
              : source === "data.gov.in" ? "data.gov.in · live"
+             : source === "cache"       ? "Cached snapshot"
              : "Demo · simulated"}
           </Pill>
-          {source !== "demo" && (
-            <span style={{ fontSize: 11, color: MUTED }}>
-              Source: data.gov.in OGD Platform · Agmarknet APMC daily feed
+          {lastSyncAt != null && source !== "demo" && (
+            <span style={{ fontSize: 12, color: MUTED }}>
+              Updated <strong style={{ color: TEXT }}>{ageString(Date.now() - lastSyncAt)}</strong>
+              {" "}· next refresh in <strong style={{ color: TEXT }}>{nextRefreshIn(lastSyncAt)}</strong>
             </span>
           )}
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={refreshing}
+              style={{
+                marginLeft: "auto",
+                padding: "0.4rem 0.85rem", borderRadius: 999,
+                background: refreshing ? "rgba(56,189,248,0.08)" : "rgba(56,189,248,0.14)",
+                border: `1px solid ${BLUE}40`,
+                color: BLUE, fontSize: 12, fontWeight: 700,
+                cursor: refreshing ? "wait" : "pointer", fontFamily: "inherit",
+                display: "inline-flex", alignItems: "center", gap: 6,
+              }}
+              title="Force a direct data.gov.in fetch — bypasses caches"
+            >
+              <span className={refreshing ? "ki-anim-pulse" : ""} style={{ display: "inline-block" }}>↻</span>
+              {refreshing ? "Refreshing…" : "Refresh now"}
+            </button>
+          )}
         </div>
+      )}
+      {source !== "demo" && source !== undefined && (
+        <p style={{ fontSize: 11, color: MUTED, marginBottom: "1rem", marginTop: "-0.4rem" }}>
+          Source: data.gov.in OGD Platform · Agmarknet APMC daily feed. Synced into Firebase every 30 min by the
+          {" "}<code style={{ background: "rgba(255,255,255,0.06)", padding: "1px 5px", borderRadius: 4 }}>sync-mandi-prices</code> cron.
+        </p>
       )}
 
       {/* Summary */}

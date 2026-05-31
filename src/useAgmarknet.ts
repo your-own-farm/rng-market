@@ -20,6 +20,33 @@ const RESOURCE_ID = "9ef84268-d588-465a-a308-a864a43d0070";
 const API_BASE = "https://api.data.gov.in/resource";
 const API_KEY = (typeof process !== "undefined" && process.env.VITE_DATA_GOV_KEY) || "";
 
+// ── Two-tier cache: in-memory (per page-session) + sessionStorage (survives
+//    reloads, same tab). Both share TTLs. The browser only hits OGD when both
+//    layers miss — protects the free-tier quota from refresh-heavy users.
+const STORAGE_PREFIX = "kinsar.cache.v1.";
+const SNAPSHOT_TTL_MS = 30 * 60 * 1000;          // 30 min — matches the OGD-→-Firebase sync cadence
+const HISTORY_TTL_MS  = 6  * 60 * 60 * 1000;     // 6 h    — history doesn't change intra-day
+
+function loadCached<T>(key: string, ttlMs: number): { data: T; at: number } | null {
+  try {
+    if (typeof sessionStorage === "undefined") return null;
+    const raw = sessionStorage.getItem(STORAGE_PREFIX + key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { at: number; data: T };
+    if (!parsed?.at || Date.now() - parsed.at > ttlMs) return null;
+    return parsed;
+  } catch { return null; }
+}
+function saveCached<T>(key: string, data: T) {
+  try {
+    if (typeof sessionStorage === "undefined") return;
+    sessionStorage.setItem(STORAGE_PREFIX + key, JSON.stringify({ at: Date.now(), data }));
+  } catch {/* quota / private-browsing — ignore */}
+}
+function dropCached(key: string) {
+  try { sessionStorage?.removeItem(STORAGE_PREFIX + key); } catch {}
+}
+
 // ── Raw row shape from Agmarknet ──────────────────────────────────────────────
 interface AgmarknetRow {
   state:        string;
@@ -149,15 +176,41 @@ function toCropPrice(row: AgmarknetRow): CropPrice | null {
 // ─────────────────────────────────────────────────────────────────────────────
 // Today snapshot: most recent record per (state, district, commodity)
 // ─────────────────────────────────────────────────────────────────────────────
-const snapshotCache = new Map<string, { rows: CropPriceVM[]; at: number }>();
-const SNAPSHOT_TTL_MS = 30 * 60 * 1000; // 30 minutes — APMC publishes once daily
+const snapshotMem = new Map<string, { rows: CropPriceVM[]; at: number }>();
 
-/** Fetch latest prices for a state. Falls back to nation-wide if state is null. */
-export async function fetchAgmarknetSnapshot(state?: string | null): Promise<CropPriceVM[]> {
+export interface CachedSnapshot { rows: CropPriceVM[]; fetchedAt: number; ageMs: number }
+
+/** Returns the cached snapshot for `state` if it's still fresh, otherwise null.
+ *  Reads memory first, then sessionStorage. No network call. */
+export function cachedSnapshot(state?: string | null): CachedSnapshot | null {
+  const key = `snap:${state ?? "ALL"}`;
+  const mem = snapshotMem.get(key);
+  if (mem && Date.now() - mem.at < SNAPSHOT_TTL_MS) {
+    return { rows: mem.rows, fetchedAt: mem.at, ageMs: Date.now() - mem.at };
+  }
+  const disk = loadCached<CropPriceVM[]>(key, SNAPSHOT_TTL_MS);
+  if (disk) {
+    // Promote disk → memory so subsequent reads in this page skip JSON parse.
+    snapshotMem.set(key, { rows: disk.data, at: disk.at });
+    return { rows: disk.data, fetchedAt: disk.at, ageMs: Date.now() - disk.at };
+  }
+  return null;
+}
+
+/** Fetch latest prices for a state. Falls back to nation-wide if state is null.
+ *  Honours the 30-min memory + sessionStorage cache. Pass `force: true` from a
+ *  manual refresh button to bypass the cache. */
+export async function fetchAgmarknetSnapshot(state?: string | null, opts: { force?: boolean } = {}): Promise<CropPriceVM[]> {
   if (!API_KEY) return [];
   const key = `snap:${state ?? "ALL"}`;
-  const hit = snapshotCache.get(key);
-  if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) return hit.rows;
+
+  if (!opts.force) {
+    const cached = cachedSnapshot(state);
+    if (cached) return cached.rows;
+  } else {
+    snapshotMem.delete(key);
+    dropCached(key);
+  }
 
   const rows = await fetchAgmarknet({ state: state ?? undefined, limit: 1000 });
 
@@ -175,7 +228,8 @@ export async function fetchAgmarknetSnapshot(state?: string | null): Promise<Cro
   }
 
   const out = Array.from(dedup.values()).map(toVM);
-  snapshotCache.set(key, { rows: out, at: Date.now() });
+  snapshotMem.set(key, { rows: out, at: Date.now() });
+  saveCached(key, out);
   return out;
 }
 
@@ -186,14 +240,21 @@ export async function fetchAgmarknetSnapshot(state?: string | null): Promise<Cro
 // ─────────────────────────────────────────────────────────────────────────────
 export interface PricePoint { date: Date; price: number; samples: number }
 
-const historyCache = new Map<string, { series: PricePoint[]; at: number }>();
-const HISTORY_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const historyMem = new Map<string, { series: PricePoint[]; at: number }>();
 
 export async function fetchAgmarknetHistory(cropId: string, state?: string | null, limit = 500): Promise<PricePoint[]> {
   if (!API_KEY) return [];
   const key = `hist:${cropId}:${state ?? "ALL"}`;
-  const hit = historyCache.get(key);
-  if (hit && Date.now() - hit.at < HISTORY_TTL_MS) return hit.series;
+
+  const mem = historyMem.get(key);
+  if (mem && Date.now() - mem.at < HISTORY_TTL_MS) return mem.series;
+
+  const disk = loadCached<Array<{ d: number; price: number; samples: number }>>(key, HISTORY_TTL_MS);
+  if (disk) {
+    const series = disk.data.map((p) => ({ date: new Date(p.d), price: p.price, samples: p.samples }));
+    historyMem.set(key, { series, at: disk.at });
+    return series;
+  }
 
   const names = cropIdToCommodityNames(cropId);
   if (names.length === 0) return [];
@@ -222,7 +283,9 @@ export async function fetchAgmarknetHistory(cropId: string, state?: string | nul
     .map(({ sum, n, date }) => ({ date, price: Math.round(sum / n), samples: n }))
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  historyCache.set(key, { series, at: Date.now() });
+  historyMem.set(key, { series, at: Date.now() });
+  // Date objects don't survive JSON — store the epoch and rehydrate on read.
+  saveCached(key, series.map((p) => ({ d: p.date.getTime(), price: p.price, samples: p.samples })));
   return series;
 }
 

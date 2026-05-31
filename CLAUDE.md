@@ -37,7 +37,7 @@ Active tab persists in `localStorage` so the farmer returns where they left off.
 | Weather (7-day)  | **Open-Meteo** (ODbL)           | `useWeather.ts`       | 1-hour in-memory cache; offline fallback synthesises a seasonal estimate. |
 | Reverse geocode  | **OpenStreetMap Nominatim**     | `useGeocode.ts`       | Snaps to nearest known district when offline.                |
 | Soil composition | **SoilGrids by ISRIC** (CC-BY)  | `useSoil.ts`          | 24-hour cache; classifies into `SoilType` taxonomy.          |
-| Mandi prices     | **Firebase RTDB → data.gov.in → demo** | `usePrices.ts`, `useAgmarknet.ts` | Three-tier price chain. Firebase first (pre-aggregated by the Python `market-price-agent`), then a direct browser call to **data.gov.in OGD Platform** (Agmarknet resource `9ef84268-d588-465a-a308-a864a43d0070`) when RTDB is empty, finally bundled `DEMO_PRICES` so the UI never goes blank. |
+| Mandi prices     | **session cache → Firebase RTDB → data.gov.in → demo** | `usePrices.ts`, `useAgmarknet.ts` | Four-tier smart chain. See [Price source flow](#price-source-flow) below. |
 | Price history & 90-day forecast | **data.gov.in (Agmarknet)** | `useAgmarknet.ts`, `priceForecast.ts` | Per-crop daily series, collapsed to one modal price per arrival_date. The forecast fits a linear regression on `(days, log(price))`, caps extrapolation at ±25%, applies the MSP floor where it exists, and reports volatility-adjusted confidence. The recommender uses this forecast in place of its inline heuristic whenever ≥4 distinct trading days are available. |
 | Speech / TTS     | **Web Speech API** (browser)    | `tts.ts`              | Picks best matching `BCP47` voice; silently no-ops if absent.|
 | Geolocation      | **`navigator.geolocation`**     | `useGeocode.ts`       | Permission prompted on first "Use my location" click.        |
@@ -156,6 +156,61 @@ const KinsarIntelligence = React.lazy(() => import("marketApp/App"));
   surfaces "Verify with local experts." on every results page.
 
 ---
+
+## Price source flow
+
+```
+   scripts/sync-mandi-prices/sync.mjs   ── 30-min cron (Cloud Scheduler /
+   (data.gov.in → Firebase RTDB)            GitHub Actions / unix cron)
+              │
+              │ writes /crop-prices + /crop-prices/_meta/lastSyncAt
+              ▼
+   Firebase RTDB ◀──────── Browser (usePrices hook)
+                                │
+   data.gov.in OGD ◀────────────┤   1. sessionStorage cache (< 30 min)
+   (Agmarknet)                  │   2. Firebase RTDB (within 35 min of sync)
+                                │   3. direct OGD call (forced refresh or stale)
+                                │   4. bundled DEMO_PRICES
+                                ▼
+                          Demo / jitter fallback
+```
+
+Selection rule the browser applies (in order):
+
+1. **sessionStorage cache** — if a snapshot < 30 min old exists, render it
+   with zero network calls. Survives F5 / route changes.
+2. **Firebase RTDB** — subscribed via `onValue`. Reads `_meta.lastSyncAt`;
+   when within 35 minutes (30-min cron + 5-min buffer) the page renders from
+   Firebase and never touches OGD.
+3. **Direct OGD call** — only when (a) the user hits "Refresh now" or
+   (b) Firebase is stale or empty. The response is written into both
+   in-memory and sessionStorage caches.
+4. **Bundled `DEMO_PRICES`** + 8 s jitter — if absolutely everything else
+   fails so the UI never goes blank.
+
+Cost shape:
+
+| Scenario                                  | OGD calls/day                    |
+|------------------------------------------|---------------------------------|
+| Server-side sync running                  | **~48** (every 30 min, fixed)   |
+| Sync down, 1 000 farmer sessions/day      | up to 1 000 (capped by 30-min cache) |
+| User mashes Refresh                       | 1 per tap (cache bypassed)      |
+
+The free OGD quota is 5 000 calls/day — the sync alone uses < 1 % of it.
+
+## Manual refresh button
+
+The Prices page header carries a `↻ Refresh now` control. Pressing it sets a
+refresh token that re-runs the resolver with `force: true`, bypassing every
+cache layer and pulling straight from OGD. Useful when a farmer suspects
+yesterday's prices are stuck on the page.
+
+## Deployable sync script
+
+See `scripts/sync-mandi-prices/` for a self-contained Node 18+ script with
+Cloud Scheduler / GitHub Actions / unix-cron recipes. The Python
+`market-price-agent` in the wider monorepo serves the same purpose; either
+can be the cron source — whichever owns the deployment.
 
 ## data.gov.in API key
 

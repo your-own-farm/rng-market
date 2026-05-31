@@ -1,64 +1,167 @@
 // ── usePrices ────────────────────────────────────────────────────────────────
-// Price source chain (best → worst):
-//   1. Firebase Realtime DB at /crop-prices — fed by the Python
-//      market-price-agent which proxies data.gov.in. Pre-aggregated, low
-//      latency, no API-key footprint for the browser.
-//   2. data.gov.in (Agmarknet) directly from the browser — used when the
-//      Firebase node is empty / unreachable AND a VITE_DATA_GOV_KEY is set.
-//   3. Bundled DEMO_PRICES with a jitter loop so the UI doesn't go blank.
+// Smart price source chain — designed to minimise expensive OGD calls.
+//
+//   ┌─────────────────────┐
+//   │  scripts/sync-prices │  ← Node cron, every 30 min
+//   │  (data.gov.in →     │
+//   │   Firebase RTDB)    │
+//   └─────────┬───────────┘
+//             │ writes /crop-prices + /crop-prices/_meta/lastSyncAt
+//             ▼
+//   ┌─────────────────────┐         ┌──────────────────────────┐
+//   │ Firebase RTDB feed  │ ◀────── │  Browser (this hook)     │
+//   │ (real-time push)    │         │                          │
+//   └─────────────────────┘         │ 1. session/memory cache  │
+//                                   │ 2. Firebase RTDB         │
+//   ┌─────────────────────┐         │ 3. direct data.gov.in    │
+//   │ data.gov.in OGD     │ ◀────── │ 4. bundled DEMO_PRICES   │
+//   │ Agmarknet           │         └──────────────────────────┘
+//   └─────────────────────┘
+//
+// Selection rule the browser applies:
+//
+//   • If sessionStorage holds a snapshot < 30 min old → use it (0 network).
+//   • Else subscribe to Firebase and read /crop-prices/_meta/lastSyncAt:
+//       – within 35 min → use Firebase (1 cheap socket frame, no OGD).
+//       – stale or absent → fall back to a direct OGD call.
+//   • OGD itself fails (no key / rate-limited / offline) → use the most
+//     recent Firebase data (even if stale), then demo.
+//
+// "Refresh" button forces an OGD call regardless of caches.
 
 import React from "react";
 import { ref, onValue, off } from "firebase/database";
 import { db } from "./firebase";
 import { CropPrice, CropPriceVM, toVM, DEMO_PRICES } from "./types";
-import { fetchAgmarknetSnapshot, HAS_AGMARKNET_KEY } from "./useAgmarknet";
+import { cachedSnapshot, fetchAgmarknetSnapshot, HAS_AGMARKNET_KEY } from "./useAgmarknet";
 
-export type PriceSource = "firebase" | "data.gov.in" | "demo";
+export type PriceSource = "cache" | "firebase" | "data.gov.in" | "demo";
 
 export interface PricesResult {
-  prices: CropPriceVM[];
-  live:   boolean;
-  source: PriceSource;
+  prices:     CropPriceVM[];
+  live:       boolean;
+  source:     PriceSource;
+  /** Epoch ms of the most recent verified update across any source. */
+  lastSyncAt: number | null;
+  /** True while a network refresh is in-flight (Firebase subscribe or OGD fetch). */
+  refreshing: boolean;
+  /** Force a direct OGD fetch — bypasses all caches. */
+  refresh:    () => void;
 }
 
+const FIREBASE_FRESH_MS = 35 * 60 * 1000;   // 30-min sync + 5-min buffer
+
 export function usePrices(): PricesResult {
-  const [prices, setPrices] = React.useState<CropPriceVM[]>([]);
-  const [source, setSource] = React.useState<PriceSource>("demo");
+  const [prices, setPrices]         = React.useState<CropPriceVM[]>([]);
+  const [source, setSource]         = React.useState<PriceSource>("demo");
+  const [lastSyncAt, setLastSyncAt] = React.useState<number | null>(null);
+  const [refreshing, setRefreshing] = React.useState(true);
+  // A monotonically-increasing token used to force-re-run the resolve effect.
+  const [refreshToken, setRefreshToken] = React.useState(0);
 
-  // ── 1. Subscribe to Firebase ──────────────────────────────────────────────
+  // ── Resolve chain ─────────────────────────────────────────────────────────
   React.useEffect(() => {
-    const pricesRef = ref(db, "crop-prices");
+    let cancelled = false;
+    setRefreshing(true);
 
-    const unsubscribe = onValue(
-      pricesRef,
-      (snapshot) => {
-        const raw = snapshot.val();
-        if (raw) {
-          const flat: CropPrice[] = [];
-          for (const stateKey of Object.keys(raw)) {
-            for (const districtKey of Object.keys(raw[stateKey])) {
-              for (const cropKey of Object.keys(raw[stateKey][districtKey])) {
-                flat.push(raw[stateKey][districtKey][cropKey] as CropPrice);
+    // Step 1 — session/memory cache (zero network).
+    if (refreshToken === 0) {
+      const cached = cachedSnapshot(null);
+      if (cached && cached.rows.length > 0) {
+        setPrices(cached.rows);
+        setSource("cache");
+        setLastSyncAt(cached.fetchedAt);
+        setRefreshing(false);
+        // Cache satisfies the page, but we still attach a Firebase listener
+        // so that when the 30-min sync writes new data the UI updates live.
+        attachFirebase(false);
+        return () => { cancelled = true; detach(); };
+      }
+    }
+
+    // Step 2 — Firebase RTDB (primary "fresh" source via the cron sync).
+    let detach: () => void = () => {};
+    function attachFirebase(allowOGDFallback: boolean) {
+      const pricesRef = ref(db, "crop-prices");
+      const handler = onValue(
+        pricesRef,
+        (snapshot) => {
+          if (cancelled) return;
+          const raw = snapshot.val();
+          if (raw) {
+            const meta = raw._meta as { lastSyncAt?: number } | undefined;
+            const flat: CropPrice[] = [];
+            for (const stateKey of Object.keys(raw)) {
+              if (stateKey === "_meta") continue;
+              for (const districtKey of Object.keys(raw[stateKey])) {
+                for (const cropKey of Object.keys(raw[stateKey][districtKey])) {
+                  flat.push(raw[stateKey][districtKey][cropKey] as CropPrice);
+                }
               }
             }
+            const syncedAt = meta?.lastSyncAt
+              ?? Math.max(...flat.map((p) => p.updatedAt), 0)
+              ?? Date.now();
+            const isFresh = Date.now() - syncedAt < FIREBASE_FRESH_MS;
+
+            if (flat.length > 0 && (isFresh || !allowOGDFallback)) {
+              setPrices(flat.map(toVM));
+              setSource("firebase");
+              setLastSyncAt(syncedAt);
+              setRefreshing(false);
+              return;
+            }
+            // Stale data is still better than nothing — keep it around and try OGD.
+            if (flat.length > 0) {
+              setPrices(flat.map(toVM));
+              setSource("firebase");
+              setLastSyncAt(syncedAt);
+            }
           }
-          setPrices(flat.map(toVM));
-          setSource("firebase");
-          return;
+          if (allowOGDFallback) kickOGD();
+          else                  finishWithDemoIfStillEmpty();
+        },
+        () => {
+          if (cancelled) return;
+          if (allowOGDFallback) kickOGD();
+          else                  finishWithDemoIfStillEmpty();
         }
-        // RTDB node empty — try data.gov.in next.
-        kickAgmarknet(setPrices, setSource);
-      },
-      () => {
-        // Permission denied / network error — try data.gov.in.
-        kickAgmarknet(setPrices, setSource);
-      }
-    );
+      );
+      detach = () => off(pricesRef, "value", handler as any);
+    }
 
-    return () => off(pricesRef, "value", unsubscribe as any);
-  }, []);
+    function kickOGD() {
+      if (!HAS_AGMARKNET_KEY) { finishWithDemoIfStillEmpty(); return; }
+      fetchAgmarknetSnapshot(null, { force: refreshToken > 0 })
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows.length > 0) {
+            setPrices(rows);
+            setSource("data.gov.in");
+            setLastSyncAt(Date.now());
+          } else {
+            finishWithDemoIfStillEmpty();
+          }
+          setRefreshing(false);
+        })
+        .catch(() => { if (!cancelled) finishWithDemoIfStillEmpty(); });
+    }
 
-  // ── 3. Demo-mode jitter — only when *no* live source is connected. ────────
+    function finishWithDemoIfStillEmpty() {
+      if (cancelled) return;
+      setRefreshing(false);
+      // Only drop to demo when we have absolutely nothing else.
+      setPrices((prev) => (prev.length === 0 ? DEMO_PRICES.map(toVM) : prev));
+      setSource((prev) => (prev === "demo" || prev === "cache" ? "demo" : prev));
+    }
+
+    // Initial path: try Firebase first; if it's empty/stale, escalate to OGD.
+    attachFirebase(true);
+
+    return () => { cancelled = true; detach(); };
+  }, [refreshToken]);
+
+  // ── Demo-mode jitter (only when nothing real is connected) ────────────────
   React.useEffect(() => {
     if (source !== "demo") return;
     const id = setInterval(() => {
@@ -74,28 +177,7 @@ export function usePrices(): PricesResult {
     return () => clearInterval(id);
   }, [source]);
 
-  return { prices, live: source !== "demo", source };
-}
+  const refresh = React.useCallback(() => setRefreshToken((n) => n + 1), []);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// data.gov.in fallback — fired when Firebase is empty.
-// ─────────────────────────────────────────────────────────────────────────────
-function kickAgmarknet(
-  setPrices: React.Dispatch<React.SetStateAction<CropPriceVM[]>>,
-  setSource: React.Dispatch<React.SetStateAction<PriceSource>>,
-) {
-  if (!HAS_AGMARKNET_KEY) {
-    setPrices(DEMO_PRICES.map(toVM));
-    setSource("demo");
-    return;
-  }
-  fetchAgmarknetSnapshot(null)
-    .then((rows) => {
-      if (rows.length > 0) { setPrices(rows); setSource("data.gov.in"); }
-      else                  { setPrices(DEMO_PRICES.map(toVM)); setSource("demo"); }
-    })
-    .catch(() => {
-      setPrices(DEMO_PRICES.map(toVM));
-      setSource("demo");
-    });
+  return { prices, live: source !== "demo", source, lastSyncAt, refreshing, refresh };
 }

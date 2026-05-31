@@ -66,7 +66,7 @@ const LanguageSelector: React.FC = () => {
 // ── Inner app (needs I18nProvider in scope) ──────────────────────────────────
 const Inner: React.FC = () => {
   const { t } = useI18n();
-  const { prices, live, source } = usePrices();
+  const { prices, live, source, lastSyncAt, refreshing, refresh } = usePrices();
   const online = useOnlineStatus();
 
   const [tab, setTab] = React.useState<TabId>(() => {
@@ -175,7 +175,7 @@ const Inner: React.FC = () => {
       <main className="kinsar-main" style={{ maxWidth: 1280, margin: "0 auto", padding: "1.6rem 1.4rem 3rem" }}>
         {tab === "advisor"    && <DecisionEngine prices={prices} />}
         {tab === "weather"    && <Weather />}
-        {tab === "prices"     && <Prices prices={prices} live={live} source={source} />}
+        {tab === "prices"     && <Prices prices={prices} live={live} source={source} lastSyncAt={lastSyncAt} refreshing={refreshing} onRefresh={refresh} />}
         {tab === "calculator" && <Calculator prices={prices} />}
         {tab === "knowledge"  && <Knowledge />}
       </main>

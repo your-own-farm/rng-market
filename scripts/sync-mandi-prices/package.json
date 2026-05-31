@@ -1,0 +1,17 @@
+{
+  "name": "sync-mandi-prices",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pulls daily APMC prices from data.gov.in (Agmarknet) and writes them to Firebase RTDB. Schedule on a 30-min cron.",
+  "main": "sync.mjs",
+  "scripts": {
+    "start": "node sync.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+}
