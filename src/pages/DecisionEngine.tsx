@@ -23,6 +23,8 @@ import { useWeather } from "../useWeather";
 import { useSoil } from "../useSoil";
 import { getCurrentLocation } from "../useGeocode";
 import { recommend, Recommendation, reasonLabel, YieldFactors } from "../recommender";
+import { fetchAgmarknetHistory, PricePoint, HAS_AGMARKNET_KEY } from "../useAgmarknet";
+import { forecastPrice, PriceForecast } from "../priceForecast";
 import { speak, stop, isSupported as ttsSupported } from "../tts";
 import {
   Dropdown, DropdownOption, Pill, formatINR,
@@ -60,6 +62,11 @@ const DecisionEngine: React.FC<Props> = ({ prices }) => {
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
   const [showFullTable, setShowFullTable] = React.useState(false);
 
+  // data.gov.in history + derived forecasts, keyed by crop id.
+  const [histories,   setHistories]   = React.useState<Record<string, PricePoint[]>>({});
+  const [forecasts,   setForecasts]   = React.useState<Map<string, PriceForecast>>(new Map());
+  const [forecasting, setForecasting] = React.useState(false);
+
   const update = (patch: Partial<AdvisorState>) => setS((prev) => {
     const next = { ...prev, ...patch };
     save(next);
@@ -87,8 +94,40 @@ const DecisionEngine: React.FC<Props> = ({ prices }) => {
       prices,
       weather: weather.data,
       soil: soilApi.data,
+      forecasts,
     });
-  }, [s, districtObj, prices, weather.data, soilApi.data, season]);
+  }, [s, districtObj, prices, weather.data, soilApi.data, season, forecasts]);
+
+  // ── Lazy-fetch Agmarknet history for the top crops once the first-pass
+  //    recommendations are in. Refines the ranking after the network call. ──
+  React.useEffect(() => {
+    if (!HAS_AGMARKNET_KEY || recs.length === 0) return;
+    const top = recs.slice(0, 4).map((r) => r.crop).filter((c) => !(c.id in histories));
+    if (top.length === 0) return;
+
+    let cancelled = false;
+    setForecasting(true);
+    Promise.allSettled(
+      top.map((c) => fetchAgmarknetHistory(c.id, s.state || null).then((h) => ({ id: c.id, history: h, crop: c })))
+    ).then((results) => {
+      if (cancelled) return;
+      const nextHist = { ...histories };
+      const nextFc   = new Map(forecasts);
+      for (const r of results) {
+        if (r.status !== "fulfilled") continue;
+        const { id, history, crop } = r.value;
+        nextHist[id] = history;
+        nextFc.set(id, forecastPrice(history, crop.daysToHarvest, {
+          mspFloor: crop.baseFloorPrice || undefined,
+        }));
+      }
+      setHistories(nextHist);
+      setForecasts(nextFc);
+      setForecasting(false);
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recs.map((r) => r.crop.id).join("|"), s.state]);
 
   const top = recs[0];
   const maxNet = top ? Math.max(1, top.bestNet) : 1;
@@ -297,6 +336,8 @@ const DecisionEngine: React.FC<Props> = ({ prices }) => {
               acres={s.acres}
               expandedId={expandedId}
               onExpand={(id) => setExpandedId((cur) => cur === id ? null : id)}
+              histories={histories}
+              forecasting={forecasting}
             />
           )}
 
@@ -456,13 +497,27 @@ const ProfitRanking: React.FC<{
   acres: number;
   expandedId: string | null;
   onExpand: (id: string) => void;
-}> = ({ recs, maxNet, acres, expandedId, onExpand }) => {
-  const { t, locale } = useI18n();
+  histories: Record<string, PricePoint[]>;
+  forecasting: boolean;
+}> = ({ recs, maxNet, acres, expandedId, onExpand, histories, forecasting }) => {
+  const { t } = useI18n();
   return (
     <section style={{ marginBottom: "1.6rem" }}>
-      <h2 style={{ fontSize: "1.3rem", fontWeight: 800, color: TEXT, letterSpacing: "-0.02em", marginBottom: 4 }}>
-        🏆 {t("ranking.title")}
-      </h2>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+        <h2 style={{ fontSize: "1.3rem", fontWeight: 800, color: TEXT, letterSpacing: "-0.02em" }}>
+          🏆 {t("ranking.title")}
+        </h2>
+        {forecasting && (
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "3px 9px", borderRadius: 999,
+            background: "rgba(56,189,248,0.12)", border: `1px solid ${BLUE}40`,
+            color: BLUE, fontSize: 11, fontWeight: 700,
+          }}>
+            <span className="ki-anim-pulse">📡</span> Fetching data.gov.in history…
+          </span>
+        )}
+      </div>
       <p style={{ fontSize: 13, color: TEXT_DIM, marginBottom: 14 }}>{t("ranking.sub")}</p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem" }}>
@@ -475,6 +530,7 @@ const ProfitRanking: React.FC<{
               acres={acres}
               expanded={expandedId === r.crop.id}
               onToggle={() => onExpand(r.crop.id)}
+              history={histories[r.crop.id]}
             />
           </FadeUp>
         ))}
@@ -490,7 +546,8 @@ const RankCard: React.FC<{
   acres: number;
   expanded: boolean;
   onToggle: () => void;
-}> = ({ r, rank, maxNet, acres, expanded, onToggle }) => {
+  history?: PricePoint[];
+}> = ({ r, rank, maxNet, acres, expanded, onToggle, history }) => {
   const { t, locale } = useI18n();
   const isTop = rank === 1;
   return (
@@ -564,7 +621,7 @@ const RankCard: React.FC<{
       {/* Expandable detail */}
       {expanded && (
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${BORDER}` }}>
-          <ExpandedDetail r={r} acres={acres} />
+          <ExpandedDetail r={r} acres={acres} history={history} />
         </div>
       )}
     </article>
@@ -589,21 +646,29 @@ const ChipMood: React.FC<{ label: string; score: number }> = ({ label, score }) 
 // ─────────────────────────────────────────────────────────────────────────────
 // ExpandedDetail — visible inside a RankCard after the farmer taps it.
 // ─────────────────────────────────────────────────────────────────────────────
-const ExpandedDetail: React.FC<{ r: Recommendation; acres: number }> = ({ r, acres }) => {
+const ExpandedDetail: React.FC<{ r: Recommendation; acres: number; history?: PricePoint[] }> = ({ r, acres, history }) => {
   const { t, locale } = useI18n();
   const orgBest = r.bestMode === "organic";
   const maxNet = Math.max(r.chemical.net, r.organic.net, 1);
   const notes  = cropNotes(r.crop, locale);
+
+  const trendUp = r.priceAtHarvest > r.priceToday;
+  const trendDn = r.priceAtHarvest < r.priceToday;
 
   return (
     <div style={{ display: "grid", gap: "1rem" }}>
       {/* Big metric tiles */}
       <div style={{ display: "grid", gap: "0.6rem", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
         <MetricTile label={t("row.price.now")}       value={formatINR(r.priceToday)}      tone={TEXT} />
-        <MetricTile label={t("row.price.forecast")}  value={formatINR(r.priceAtHarvest)}  tone={r.priceAtHarvest > r.priceToday ? GREEN : r.priceAtHarvest < r.priceToday ? RED : TEXT} />
+        <MetricTile label={t("row.price.forecast")}  value={formatINR(r.priceAtHarvest)}  tone={trendUp ? GREEN : trendDn ? RED : TEXT} />
         <MetricTile label={t("row.yield.chemical")}  value={`${r.chemical.yieldQtl}`}     unit={t("card.unit.qtl")} tone={TEXT} />
         <MetricTile label={t("row.confidence")}      value="" custom={<StarRating score={r.confidence} size={18} />} tone={TEXT} />
       </div>
+
+      {/* History sparkline — only when data.gov.in returned a usable series. */}
+      {history && history.length >= 4 && (
+        <PriceHistoryStrip r={r} history={history} />
+      )}
 
       {/* Organic vs Chemical comparison bars */}
       <div>
@@ -638,6 +703,92 @@ const ExpandedDetail: React.FC<{ r: Recommendation; acres: number }> = ({ r, acr
           {r.reasons.map((reason) => <li key={reason}>{reasonLabel(reason, t)}</li>)}
           {notes.slice(0, 2).map((n, i) => <li key={`n-${i}`} style={{ color: MUTED }}>{n}</li>)}
         </ul>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PriceHistoryStrip — sparkline of the last ~30 trading days of mandi prices,
+// pulled directly from data.gov.in. Shows the farmer the *shape* of the
+// market (volatile, trending up, crashing) — not just two numbers.
+// ─────────────────────────────────────────────────────────────────────────────
+const PriceHistoryStrip: React.FC<{ r: Recommendation; history: PricePoint[] }> = ({ r, history }) => {
+  const { t } = useI18n();
+  const trendUp = r.priceAtHarvest > r.priceToday;
+  const trendDn = r.priceAtHarvest < r.priceToday;
+  const color   = trendUp ? GREEN : trendDn ? RED : AMBER;
+  const sorted  = [...history].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // Build an SVG polyline from the series.
+  const W = 320, H = 56, PAD = 4;
+  const lo = Math.min(...sorted.map((p) => p.price));
+  const hi = Math.max(...sorted.map((p) => p.price));
+  const range = Math.max(1, hi - lo);
+  const points = sorted.map((p, i) => {
+    const x = PAD + (i / Math.max(1, sorted.length - 1)) * (W - 2 * PAD);
+    const y = H - PAD - ((p.price - lo) / range) * (H - 2 * PAD);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+
+  // Area under the curve for fill.
+  const areaPath = `M ${PAD},${H - PAD} L ${points.split(" ").join(" L ")} L ${W - PAD},${H - PAD} Z`;
+
+  const fromDate = sorted[0].date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const toDate   = sorted[sorted.length - 1].date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+
+  return (
+    <div style={{
+      background: CARD_HI, border: `1px solid ${BORDER}`, borderRadius: 12,
+      padding: "0.9rem 1rem",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 11, color: MUTED, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            📈 Price history · forecast
+          </div>
+          <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>{fromDate} → {toDate} · {sorted.length} mandi days</div>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          {r.priceTrendPctMo != null && (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              padding: "2px 8px", borderRadius: 999,
+              background: color + "18", color, fontSize: 11, fontWeight: 800,
+              border: `1px solid ${color}40`,
+            }}>
+              {trendUp ? "↑" : trendDn ? "↓" : "→"} {r.priceTrendPctMo.toFixed(1)}%/mo
+            </span>
+          )}
+          <Pill color={GREEN}>data.gov.in</Pill>
+        </div>
+      </div>
+
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: "block" }}>
+        <defs>
+          <linearGradient id={`grad-${r.crop.id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={color} stopOpacity="0.45" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaPath} fill={`url(#grad-${r.crop.id})`} />
+        <polyline points={points} fill="none" stroke={color} strokeWidth={2}
+          strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 4px ${color}66)` }} />
+        {/* End-of-series dot */}
+        {sorted.length > 0 && (
+          <circle
+            cx={PAD + (W - 2 * PAD)}
+            cy={H - PAD - ((sorted[sorted.length - 1].price - lo) / range) * (H - 2 * PAD)}
+            r={3} fill={color} />
+        )}
+      </svg>
+
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 11, color: MUTED }}>
+        <span>{t("row.price.now")} · {formatINR(r.priceToday)}</span>
+        <span style={{ color }}>
+          {t("row.price.forecast")} · {formatINR(r.priceAtHarvest)}
+          {r.forecastConfidence != null && <span style={{ color: MUTED }}> · {Math.round(r.forecastConfidence * 100)}% conf.</span>}
+        </span>
       </div>
     </div>
   );

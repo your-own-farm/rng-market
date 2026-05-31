@@ -14,6 +14,7 @@ import { CROPS, CropKB, Season, SoilType, NutrientLevel, currentSeason } from ".
 import { CropPriceVM } from "./types";
 import { WeatherData } from "./useWeather";
 import { SoilData } from "./useSoil";
+import { PriceForecast } from "./priceForecast";
 
 export interface RecommenderInput {
   state: string | null;
@@ -24,6 +25,9 @@ export interface RecommenderInput {
   prices: CropPriceVM[];
   weather: WeatherData | null;
   soil: SoilData | null;
+  /** Optional: per-crop 90-day forecast derived from data.gov.in history.
+   *  When supplied, replaces the inline forecast heuristic. */
+  forecasts?: Map<string, PriceForecast>;
 }
 
 /** Each factor in [0..1.3]. 1.0 = neutral, >1 boosts yield, <1 cuts yield. */
@@ -56,6 +60,12 @@ export interface Recommendation {
   /** 90-day forward price at expected harvest (₹/quintal). */
   priceAtHarvest: number;
   priceSource:    "live" | "msp";
+  /** Where the harvest-price projection came from. */
+  forecastSource: "history" | "heuristic" | "msp";
+  /** Implied % price change per month from history regression — when available. */
+  priceTrendPctMo: number | null;
+  /** 0..1 confidence in the forecast itself (separate from overall confidence). */
+  forecastConfidence: number | null;
   /** 0..100 — how well the soil suits this crop. */
   soilMatchPct:    number;
   /** 0..100 — how well current weather suits this crop. */
@@ -201,7 +211,21 @@ export function recommend(input: RecommenderInput, topN = 5): Recommendation[] {
       const today = new Date();
       const harvestDate = new Date(today.getTime() + crop.daysToHarvest * 86400000);
       const harvestMonth = harvestDate.getMonth() + 1;
-      const fwdPrice = priceAtHarvest(crop, price, crop.daysToHarvest, season);
+
+      // Prefer the data.gov.in-derived forecast when it's been supplied
+      // and looks credible; fall back to the inline heuristic otherwise.
+      const fc = input.forecasts?.get(crop.id);
+      const useHistory = !!fc && fc.source === "history" && fc.sampleCount >= 4;
+
+      const fwdPrice = useHistory && fc
+        ? fc.forecast
+        : priceAtHarvest(crop, price, crop.daysToHarvest, season);
+      const forecastSource: Recommendation["forecastSource"] =
+        useHistory ? "history" :
+        crop.baseFloorPrice && price < crop.baseFloorPrice * 1.05 ? "msp" : "heuristic";
+      const priceTrendPctMo    = useHistory && fc ? fc.trendPctMo : null;
+      const forecastConfidence = useHistory && fc ? fc.confidence : null;
+
       // For profit math we use the harvest price the farmer would actually realise.
       const realisedPrice = fwdPrice;
 
@@ -229,11 +253,13 @@ export function recommend(input: RecommenderInput, topN = 5): Recommendation[] {
       const bestMode: "organic" | "chemical" = organic.net >= chemical.net ? "organic" : "chemical";
       const bestNet = Math.max(organic.net, chemical.net);
 
-      // Confidence: live price + good signal coverage.
-      let confidence = 0.4;
-      if (source === "live")          confidence += 0.2;
-      if (input.soil?.source === "soilgrids") confidence += 0.2;
-      if (input.weather?.source === "open-meteo") confidence += 0.15;
+      // Confidence: live price + good signal coverage + a real history-based
+      // forecast all push the dial up.
+      let confidence = 0.35;
+      if (source === "live")          confidence += 0.15;
+      if (input.soil?.source === "soilgrids") confidence += 0.15;
+      if (input.weather?.source === "open-meteo") confidence += 0.1;
+      if (useHistory && fc)           confidence += 0.15 * fc.confidence;
       if (input.district)             confidence += 0.05;
 
       // Reasons surfaced to the UI.
@@ -247,22 +273,26 @@ export function recommend(input: RecommenderInput, topN = 5): Recommendation[] {
       if (input.soil && f.nutrients >= 1.0)             reasons.push("reason.nutrients-good");
       if (input.soil && f.ph >= 0.98)                   reasons.push("reason.ph-good");
       if (fwdPrice > price)                             reasons.push("reason.price-forecast-up");
+      if (useHistory && fc && fc.sampleCount >= 10)     reasons.push("reason.history-forecast");
 
       return {
         crop,
         organic, chemical,
         bestMode,
         bestNet,
-        priceToday:     price,
-        priceAtHarvest: fwdPrice,
-        priceSource:    source,
-        soilMatchPct:    asPct(f.soilType, f.nutrients, f.ph),
-        weatherMatchPct: asPct(f.rainfall, f.temperature),
-        weatherRisk:    weatherRiskFromFactor(f),
-        demand:         crop.demandTrend === 1 ? "rising" : crop.demandTrend === -1 ? "falling" : "stable",
-        confidence:     clamp(confidence, 0, 1),
+        priceToday:        price,
+        priceAtHarvest:    fwdPrice,
+        priceSource:       source,
+        forecastSource,
+        priceTrendPctMo,
+        forecastConfidence,
+        soilMatchPct:      asPct(f.soilType, f.nutrients, f.ph),
+        weatherMatchPct:   asPct(f.rainfall, f.temperature),
+        weatherRisk:       weatherRiskFromFactor(f),
+        demand:            crop.demandTrend === 1 ? "rising" : crop.demandTrend === -1 ? "falling" : "stable",
+        confidence:        clamp(confidence, 0, 1),
         reasons,
-        daysToHarvest:  crop.daysToHarvest,
+        daysToHarvest:     crop.daysToHarvest,
         harvestMonth,
       };
     });
@@ -284,6 +314,7 @@ export function reasonLabel(reason: string, t: (k: string) => string): string {
   if (reason === "reason.nutrients-good")      return "Soil NPK matches the crop's needs";
   if (reason === "reason.ph-good")             return "Soil pH falls inside this crop's optimal band";
   if (reason === "reason.price-forecast-up")   return "Price expected to rise by harvest";
+  if (reason === "reason.history-forecast")    return "Forecast based on 3+ weeks of mandi history (data.gov.in)";
   if (reason.startsWith("reason.soil-match:")) {
     const soil = reason.split(":")[1];
     return `Your soil (${soil}) suits this crop well`;

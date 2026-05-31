@@ -7,16 +7,17 @@ import React from "react";
 import { useI18n } from "../i18n";
 import { CropPriceVM, SellAdvice, Trend } from "../types";
 import {
-  Dropdown, DropdownOption, SectionTitle, formatINR,
+  Dropdown, DropdownOption, SectionTitle, Pill, formatINR,
   CARD, CARD_HI, BORDER, GREEN, RED, AMBER, BLUE, MUTED, TEXT, TEXT_DIM,
 } from "../ui";
+import { PriceSource } from "../usePrices";
 
-interface Props { prices: CropPriceVM[]; live: boolean }
+interface Props { prices: CropPriceVM[]; live: boolean; source?: PriceSource }
 
 const trendColor: Record<Trend, string> = { up: GREEN, down: RED, stable: AMBER };
 const trendArrow: Record<Trend, string> = { up: "↑", down: "↓", stable: "→" };
 
-const Prices: React.FC<Props> = ({ prices, live }) => {
+const Prices: React.FC<Props> = ({ prices, live, source }) => {
   const { t } = useI18n();
   const [stateFilter, setStateFilter] = React.useState("all");
   const [adviceFilter, setAdviceFilter] = React.useState<"all" | SellAdvice>("all");
@@ -61,6 +62,22 @@ const Prices: React.FC<Props> = ({ prices, live }) => {
   return (
     <div>
       <SectionTitle title={`💰 ${t("prices.title")}`} sub={t("prices.sub")} />
+
+      {/* Source attribution */}
+      {source && (
+        <div style={{ marginBottom: "1rem", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <Pill color={source === "demo" ? AMBER : GREEN}>
+            {source === "firebase"    ? "Firebase RTDB · live"
+             : source === "data.gov.in" ? "data.gov.in · live"
+             : "Demo · simulated"}
+          </Pill>
+          {source !== "demo" && (
+            <span style={{ fontSize: 11, color: MUTED }}>
+              Source: data.gov.in OGD Platform · Agmarknet APMC daily feed
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Summary */}
       {prices.length > 0 && <SummaryBar prices={prices} t={t} />}

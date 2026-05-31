@@ -66,7 +66,7 @@ const LanguageSelector: React.FC = () => {
 // ── Inner app (needs I18nProvider in scope) ──────────────────────────────────
 const Inner: React.FC = () => {
   const { t } = useI18n();
-  const { prices, live } = usePrices();
+  const { prices, live, source } = usePrices();
   const online = useOnlineStatus();
 
   const [tab, setTab] = React.useState<TabId>(() => {
@@ -175,7 +175,7 @@ const Inner: React.FC = () => {
       <main className="kinsar-main" style={{ maxWidth: 1280, margin: "0 auto", padding: "1.6rem 1.4rem 3rem" }}>
         {tab === "advisor"    && <DecisionEngine prices={prices} />}
         {tab === "weather"    && <Weather />}
-        {tab === "prices"     && <Prices prices={prices} live={live} />}
+        {tab === "prices"     && <Prices prices={prices} live={live} source={source} />}
         {tab === "calculator" && <Calculator prices={prices} />}
         {tab === "knowledge"  && <Knowledge />}
       </main>
@@ -190,7 +190,7 @@ const Inner: React.FC = () => {
           Built on open data: <strong>Open-Meteo</strong> (weather, ODbL) ·{" "}
           <strong>OpenStreetMap Nominatim</strong> (geocoding) ·{" "}
           <strong>SoilGrids by ISRIC</strong> (soil, CC-BY) ·{" "}
-          <strong>data.gov.in</strong> (mandi prices).
+          <strong>data.gov.in OGD Platform · Agmarknet</strong> (mandi prices, real-time + historical).
           <br />
           No login. No tracking. No subscription. Verify recommendations with local agronomists.
         </p>

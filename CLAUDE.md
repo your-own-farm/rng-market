@@ -37,7 +37,8 @@ Active tab persists in `localStorage` so the farmer returns where they left off.
 | Weather (7-day)  | **Open-Meteo** (ODbL)           | `useWeather.ts`       | 1-hour in-memory cache; offline fallback synthesises a seasonal estimate. |
 | Reverse geocode  | **OpenStreetMap Nominatim**     | `useGeocode.ts`       | Snaps to nearest known district when offline.                |
 | Soil composition | **SoilGrids by ISRIC** (CC-BY)  | `useSoil.ts`          | 24-hour cache; classifies into `SoilType` taxonomy.          |
-| Mandi prices     | **data.gov.in → Firebase RTDB** | `usePrices.ts`        | Existing pipeline. Falls back to seeded demo data.           |
+| Mandi prices     | **Firebase RTDB → data.gov.in → demo** | `usePrices.ts`, `useAgmarknet.ts` | Three-tier price chain. Firebase first (pre-aggregated by the Python `market-price-agent`), then a direct browser call to **data.gov.in OGD Platform** (Agmarknet resource `9ef84268-d588-465a-a308-a864a43d0070`) when RTDB is empty, finally bundled `DEMO_PRICES` so the UI never goes blank. |
+| Price history & 90-day forecast | **data.gov.in (Agmarknet)** | `useAgmarknet.ts`, `priceForecast.ts` | Per-crop daily series, collapsed to one modal price per arrival_date. The forecast fits a linear regression on `(days, log(price))`, caps extrapolation at ±25%, applies the MSP floor where it exists, and reports volatility-adjusted confidence. The recommender uses this forecast in place of its inline heuristic whenever ≥4 distinct trading days are available. |
 | Speech / TTS     | **Web Speech API** (browser)    | `tts.ts`              | Picks best matching `BCP47` voice; silently no-ops if absent.|
 | Geolocation      | **`navigator.geolocation`**     | `useGeocode.ts`       | Permission prompted on first "Use my location" click.        |
 
@@ -153,6 +154,30 @@ const KinsarIntelligence = React.lazy(() => import("marketApp/App"));
   device (last inputs, last locale, active tab).
 - Recommendations are **decision support**, not financial advice. The UI
   surfaces "Verify with local experts." on every results page.
+
+---
+
+## data.gov.in API key
+
+The Agmarknet client expects a free OGD Platform key:
+
+```env
+# rng-market/.env.preview (or .env)
+VITE_DATA_GOV_KEY=<your-key-from-https://data.gov.in/user>
+```
+
+When the key is **absent** the client returns `[]` and the page silently falls
+back to Firebase RTDB / bundled demo data — no errors surfaced to the farmer.
+When the key is **present** the chain becomes Firebase → data.gov.in → demo,
+and the `DecisionEngine` opportunistically fetches per-crop history for the
+top recommendations and re-ranks them with the regression-based 90-day
+forecast.
+
+CORS: data.gov.in supports cross-origin browser calls; no proxy needed.
+
+Rate limits: free keys allow ~5,000 calls / day. The client caches snapshots
+for 30 minutes and per-crop history for 6 hours, so a typical farmer session
+uses ~5 calls.
 
 ---
 
